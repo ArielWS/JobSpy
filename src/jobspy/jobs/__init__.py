@@ -18,6 +18,7 @@ class JobType(Enum):
         "tempointegral",
         "全职",
         "plnýúvazek",
+        "plnýúväzok",
         "fuldtid",
         "دوامكامل",
         "kokopäivätyö",
@@ -38,9 +39,9 @@ class JobType(Enum):
         "повназайнятість",
         "toànthờigian",
     )
-    PART_TIME = ("parttime", "teilzeit", "částečnýúvazek", "deltid")
-    CONTRACT = ("contract", "contractor")
-    TEMPORARY = ("temporary",)
+    PART_TIME = ("parttime", "teilzeit", "částečnýúvazek","čiastočnýúväzok", "deltid")
+    CONTRACT = ("contract", "contractor", "zmluvný")
+    TEMPORARY = ("temporary",, "dočasný",)
     INTERNSHIP = (
         "internship",
         "prácticas",
@@ -111,6 +112,7 @@ class Country(Enum):
     ROMANIA = ("romania", "ro")
     SAUDIARABIA = ("saudi arabia", "sa")
     SINGAPORE = ("singapore", "sg", "sg")
+    SLOVAKIA = ("slovakia", "slovakia:sk", "sk")
     SOUTHAFRICA = ("south africa", "za")
     SOUTHKOREA = ("south korea", "kr")
     SPAIN = ("spain", "es", "es")
