@@ -41,7 +41,7 @@ class JobType(Enum):
     )
     PART_TIME = ("parttime", "teilzeit", "částečnýúvazek","čiastočnýúväzok", "deltid")
     CONTRACT = ("contract", "contractor", "zmluvný")
-    TEMPORARY = ("temporary",, "dočasný",)
+    TEMPORARY = ("temporary", "dočasný",)
     INTERNSHIP = (
         "internship",
         "prácticas",
