@@ -3,7 +3,7 @@ requires = [ "poetry-core",]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "python-jobspy"
+name = "python-jobspyfork"
 version = "1.1.76"
 description = "Job scraper for LinkedIn, Indeed, Glassdoor & ZipRecruiter"
 authors = [ "Zachary Hampton <zachary@bunsly.com>", "Cullen Watson <cullen@bunsly.com>",]
