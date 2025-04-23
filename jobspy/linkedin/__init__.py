@@ -64,7 +64,8 @@ class LinkedIn(Scraper):
             clear_cookies=True,  # Initially clear cookies when the session starts
         )
         self.last_user_agent = None  # Initialize the last_user_agent here
-        self.request_count = 0  # Track the request count for rotating User-Agent
+        self.request_count = 0  # Initialize request_count here
+        self.user_agent_switch_interval = 10  # Default interval for rotating User-Agent
 
     def get_rotated_headers(self):
         """
