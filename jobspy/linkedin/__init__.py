@@ -51,9 +51,12 @@ class LinkedIn(Scraper):
     delay = 1  # Reduced to 1 second for minimal delay
     band_delay = 1  # Reduced to 1 second for minimal delay
     jobs_per_page = 25
-    user_agent_switch_interval = 5  # Rotate every 10 requests
+    user_agent_switch_interval = 5  # Rotate every 5 requests
 
     def __init__(self, proxies: list[str] | str | None = None, ca_cert: str | None = None):
+        """
+        Initializes LinkedInScraper with the LinkedIn job search url
+        """
         super().__init__(Site.LINKEDIN, proxies=proxies, ca_cert=ca_cert)
         self.session = create_session(
             proxies=self.proxies,
@@ -63,9 +66,13 @@ class LinkedIn(Scraper):
             delay=1,
             clear_cookies=True,  # Initially clear cookies when the session starts
         )
+        self.scraper_input = None
+        self.country = "worldwide"
+        self.job_url_direct_regex = re.compile(r'(?<=\?url=)[^"]+')
+
+        # Initialize the last_user_agent and request_count here
         self.last_user_agent = None  # Initialize the last_user_agent here
         self.request_count = 0  # Initialize request_count here
-        self.user_agent_switch_interval = 5  # Default interval for rotating User-Agent
 
     def get_rotated_headers(self):
         """
@@ -97,25 +104,6 @@ class LinkedIn(Scraper):
         }
         log.info(f"Using User-Agent: {headers['user-agent']}")
         return headers
-
-    def __init__(
-        self, proxies: list[str] | str | None = None, ca_cert: str | None = None
-    ):
-        """
-        Initializes LinkedInScraper with the LinkedIn job search url
-        """
-        super().__init__(Site.LINKEDIN, proxies=proxies, ca_cert=ca_cert)
-        self.session = create_session(
-            proxies=self.proxies,
-            ca_cert=ca_cert,
-            is_tls=False,
-            has_retry=True,
-            delay=1,
-            clear_cookies=True,
-        )
-        self.scraper_input = None
-        self.country = "worldwide"
-        self.job_url_direct_regex = re.compile(r'(?<=\?url=)[^"]+')
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
         """
