@@ -12,7 +12,10 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from jobspy.exception import LinkedInException
-from jobspy.linkedin.constant import headers
+from random import choice
+from jobspy.linkedin.constant import user_agents  # Import the list of user agents
+
+
 from jobspy.linkedin.util import (
     is_job_remote,
     job_type_code,
@@ -49,6 +52,20 @@ class LinkedIn(Scraper):
     band_delay = 4
     jobs_per_page = 25
 
+    def get_rotated_headers(self):
+        """
+        Generate headers with a random User-Agent for each request.
+        """
+        headers = {
+            "authority": "www.linkedin.com",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "en-US,en;q=0.9",
+            "cache-control": "max-age=0",
+            "upgrade-insecure-requests": "1",
+            "user-agent": choice(user_agents),  # Randomly select a User-Agent
+        }
+        return headers
+    
     def __init__(
         self, proxies: list[str] | str | None = None, ca_cert: str | None = None
     ):
@@ -64,7 +81,6 @@ class LinkedIn(Scraper):
             delay=5,
             clear_cookies=True,
         )
-        self.session.headers.update(headers)
         self.scraper_input = None
         self.country = "worldwide"
         self.job_url_direct_regex = re.compile(r'(?<=\?url=)[^"]+')
@@ -118,6 +134,7 @@ class LinkedIn(Scraper):
                 response = self.session.get(
                     f"{self.base_url}/jobs-guest/jobs/api/seeMoreJobPostings/search?",
                     params=params,
+                    headers=self.get_rotated_headers(),  # Use dynamically generated headers
                     timeout=10,
                 )
                 if response.status_code not in range(200, 400):
@@ -169,78 +186,6 @@ class LinkedIn(Scraper):
         job_list = job_list[: scraper_input.results_wanted]
         return JobResponse(jobs=job_list)
 
-    def _process_job(
-        self, job_card: Tag, job_id: str, full_descr: bool
-    ) -> Optional[JobPost]:
-        salary_tag = job_card.find("span", class_="job-search-card__salary-info")
-
-        compensation = description = None
-        if salary_tag:
-            salary_text = salary_tag.get_text(separator=" ").strip()
-            salary_values = [currency_parser(value) for value in salary_text.split("-")]
-            salary_min = salary_values[0]
-            salary_max = salary_values[1]
-            currency = salary_text[0] if salary_text[0] != "$" else "USD"
-
-            compensation = Compensation(
-                min_amount=int(salary_min),
-                max_amount=int(salary_max),
-                currency=currency,
-            )
-
-        title_tag = job_card.find("span", class_="sr-only")
-        title = title_tag.get_text(strip=True) if title_tag else "N/A"
-
-        company_tag = job_card.find("h4", class_="base-search-card__subtitle")
-        company_a_tag = company_tag.find("a") if company_tag else None
-        company_url = (
-            urlunparse(urlparse(company_a_tag.get("href"))._replace(query=""))
-            if company_a_tag and company_a_tag.has_attr("href")
-            else ""
-        )
-        company = company_a_tag.get_text(strip=True) if company_a_tag else "N/A"
-
-        metadata_card = job_card.find("div", class_="base-search-card__metadata")
-        location = self._get_location(metadata_card)
-
-        datetime_tag = (
-            metadata_card.find("time", class_="job-search-card__listdate")
-            if metadata_card
-            else None
-        )
-        date_posted = None
-        if datetime_tag and "datetime" in datetime_tag.attrs:
-            datetime_str = datetime_tag["datetime"]
-            try:
-                date_posted = datetime.strptime(datetime_str, "%Y-%m-%d")
-            except:
-                date_posted = None
-        job_details = {}
-        if full_descr:
-            job_details = self._get_job_details(job_id)
-            description = job_details.get("description")
-        is_remote = is_job_remote(title, description, location)
-
-        return JobPost(
-            id=f"li-{job_id}",
-            title=title,
-            company_name=company,
-            company_url=company_url,
-            location=location,
-            is_remote=is_remote,
-            date_posted=date_posted,
-            job_url=f"{self.base_url}/jobs/view/{job_id}",
-            compensation=compensation,
-            job_type=job_details.get("job_type"),
-            job_level=job_details.get("job_level", "").lower(),
-            company_industry=job_details.get("company_industry"),
-            description=job_details.get("description"),
-            job_url_direct=job_details.get("job_url_direct"),
-            emails=extract_emails_from_text(description),
-            company_logo=job_details.get("company_logo"),
-            job_function=job_details.get("job_function"),
-        )
-
     def _get_job_details(self, job_id: str) -> dict:
         """
         Retrieves job description and other job details by going to the job page url
@@ -249,7 +194,9 @@ class LinkedIn(Scraper):
         """
         try:
             response = self.session.get(
-                f"{self.base_url}/jobs/view/{job_id}", timeout=5
+                f"{self.base_url}/jobs/view/{job_id}", 
+                headers=self.get_rotated_headers(),  # Use dynamically generated headers
+                timeout=5
             )
             response.raise_for_status()
         except:
