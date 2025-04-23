@@ -48,8 +48,8 @@ log = create_logger("LinkedIn")
 
 class LinkedIn(Scraper):
     base_url = "https://www.linkedin.com"
-    delay = 3
-    band_delay = 4
+    delay = 1  # Reduced to 1 second for minimal delay
+    band_delay = 1  # Reduced to 1 second for minimal delay
     jobs_per_page = 25
 
     def get_rotated_headers(self):
@@ -68,7 +68,6 @@ class LinkedIn(Scraper):
         log.info(f"Using User-Agent: {headers['user-agent']}")
         return headers
 
-    
     def __init__(
         self, proxies: list[str] | str | None = None, ca_cert: str | None = None
     ):
@@ -145,10 +144,12 @@ class LinkedIn(Scraper):
                         err = (
                             f"429 Response - Blocked by LinkedIn for too many requests"
                         )
+                        log.error(err)
+                        time.sleep(random.uniform(5, 10))  # Long delay after being rate-limited
                     else:
                         err = f"LinkedIn response status code {response.status_code}"
                         err += f" - {response.text}"
-                    log.error(err)
+                        log.error(err)
                     return JobResponse(jobs=job_list)
             except Exception as e:
                 if "Proxy responded with" in str(e):
@@ -182,8 +183,10 @@ class LinkedIn(Scraper):
                     except Exception as e:
                         raise LinkedInException(str(e))
 
+            # Shorter delay after each batch of job listings
+            time.sleep(random.uniform(0.1, 1.5))  # Delay between job listing requests
+
             if continue_search():
-                time.sleep(random.uniform(self.delay, self.delay + self.band_delay))
                 start += len(job_list)
 
         job_list = job_list[: scraper_input.results_wanted]
@@ -196,6 +199,9 @@ class LinkedIn(Scraper):
         :return: dict
         """
         try:
+            # Throttle delay before requesting job details
+            time.sleep(random.uniform(1, 2))  # Delay before job detail request
+
             response = self.session.get(
                 f"{self.base_url}/jobs/view/{job_id}", 
                 headers=self.get_rotated_headers(),  # Use dynamically generated headers
