@@ -51,11 +51,9 @@ class LinkedIn(Scraper):
     delay = 1  # Reduced to 1 second for minimal delay
     band_delay = 1  # Reduced to 1 second for minimal delay
     jobs_per_page = 25
+    user_agent_switch_interval = 5  # Rotate every 10 requests
 
     def __init__(self, proxies: list[str] | str | None = None, ca_cert: str | None = None):
-        """
-        Initializes LinkedInScraper with the LinkedIn job search url
-        """
         super().__init__(Site.LINKEDIN, proxies=proxies, ca_cert=ca_cert)
         self.session = create_session(
             proxies=self.proxies,
@@ -65,21 +63,28 @@ class LinkedIn(Scraper):
             delay=1,
             clear_cookies=True,  # Initially clear cookies when the session starts
         )
-        self.last_user_agent = None  # Track the last User-Agent used
+        self.last_user_agent = None  # Initialize the last_user_agent here
+        self.request_count = 0  # Track the request count for rotating User-Agent
 
     def get_rotated_headers(self):
         """
         Generate headers with a random User-Agent for each request.
-        Clear cookies if the User-Agent changes to mimic browser/device switching.
+        Rotate the User-Agent every 'user_agent_switch_interval' requests.
         """
-        # Randomly select a User-Agent from the list
-        user_agent = choice(user_agents)
+        self.request_count += 1
         
-        # Clear cookies if the User-Agent changes
-        if user_agent != self.last_user_agent:
-            log.info(f"Switching to a new User-Agent. Clearing cookies.")
-            self.session.cookies.clear()  # Clear cookies when switching User-Agent
-            self.last_user_agent = user_agent  # Update the last used User-Agent
+        # Rotate User-Agent every 'user_agent_switch_interval' requests
+        if self.request_count % self.user_agent_switch_interval == 0 or not self.last_user_agent:
+            # Randomly select a User-Agent from the list
+            user_agent = choice(user_agents)
+            
+            # Clear cookies if the User-Agent changes
+            if user_agent != self.last_user_agent:
+                log.info(f"Switching to a new User-Agent. Clearing cookies.")
+                self.session.cookies.clear()  # Clear cookies when switching User-Agent
+                self.last_user_agent = user_agent  # Update the last used User-Agent
+            else:
+                log.info(f"Reusing User-Agent: {user_agent}")
 
         headers = {
             "authority": "www.linkedin.com",
@@ -87,9 +92,8 @@ class LinkedIn(Scraper):
             "accept-language": "en-US,en;q=0.9",
             "cache-control": "max-age=0",
             "upgrade-insecure-requests": "1",
-            "user-agent": user_agent,  # Randomly select a User-Agent
+            "user-agent": self.last_user_agent,  # Use selected User-Agent
         }
-        # Log the User-Agent being used for the request
         log.info(f"Using User-Agent: {headers['user-agent']}")
         return headers
 
