@@ -72,12 +72,13 @@ class LinkedIn(Scraper):
 
         # Initialize the last_user_agent and request_count here
         self.last_user_agent = None  # Initialize the last_user_agent here
+        self.last_proxy = None  # Track the last used proxy
         self.request_count = 0  # Initialize request_count here
 
     def get_rotated_headers(self):
         """
         Generate headers with a random User-Agent for each request.
-        Rotate the User-Agent every 'user_agent_switch_interval' requests.
+        Rotate the User-Agent and Proxy every 'user_agent_switch_interval' requests.
         """
         self.request_count += 1
         
@@ -91,8 +92,17 @@ class LinkedIn(Scraper):
                 log.info(f"Switching to a new User-Agent. Clearing cookies.")
                 self.session.cookies.clear()  # Clear cookies when switching User-Agent
                 self.last_user_agent = user_agent  # Update the last used User-Agent
+
+            # Rotate Proxy every 'user_agent_switch_interval' requests
+            proxy = choice(self.proxies)  # Select a random proxy from the list
+            
+            # Only switch proxy if it's different from the last one
+            if proxy != self.last_proxy:
+                log.info(f"Switching to a new Proxy.")
+                self.session.proxies = {"http": proxy, "https": proxy}  # Update session proxy
+                self.last_proxy = proxy  # Update the last used proxy
             else:
-                log.info(f"Reusing User-Agent: {user_agent}")
+                log.info(f"Reusing Proxy: {proxy}")
 
         headers = {
             "authority": "www.linkedin.com",
@@ -102,7 +112,7 @@ class LinkedIn(Scraper):
             "upgrade-insecure-requests": "1",
             "user-agent": self.last_user_agent,  # Use selected User-Agent
         }
-        log.info(f"Using User-Agent: {headers['user-agent']}")
+        log.info(f"Using User-Agent: {headers['user-agent']} and Proxy: {self.last_proxy}")
         return headers
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
