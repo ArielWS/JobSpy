@@ -1,9 +1,9 @@
 from __future__ import annotations
-
 import json
 import math
 import re
 import time
+import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -50,7 +50,7 @@ class ZipRecruiter(Scraper):
         self.session.headers.update(headers)  # Use headers from constant.py
         self._get_cookies()
 
-        self.delay = 5
+        self.delay = 1  # Base delay between page requests
         self.jobs_per_page = 20
         self.seen_urls = set()
 
@@ -107,7 +107,7 @@ class ZipRecruiter(Scraper):
             if len(job_list) >= scraper_input.results_wanted:
                 break
             if page > 1:
-                time.sleep(self.delay)
+                time.sleep(random.uniform(0.5, 2))  # Random delay between 3 and 7 seconds between page requests
             log.info(f"search page: {page} / {max_pages}")
             jobs_on_page, continue_token = self._find_jobs_in_page(
                 scraper_input, continue_token
@@ -135,9 +135,11 @@ class ZipRecruiter(Scraper):
             params["continue_from"] = continue_token
         try:
             res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
+            time.sleep(random.uniform(0.5, 1.5))  # Random delay between 2 and 4 seconds after the request
             if res.status_code not in range(200, 400):
                 if res.status_code == 429:
-                    err = "429 Response - Blocked by ZipRecruiter for too many requests"
+                    log.error("429 Response - Blocked by ZipRecruiter for too many requests")
+                    time.sleep(random.uniform(2, 3))  # Longer random delay if rate-limited
                 else:
                     err = f"ZipRecruiter response status code {res.status_code}"
                     err += f" with response: {res.text}"  # ZipRecruiter likely not available in EU
@@ -145,9 +147,9 @@ class ZipRecruiter(Scraper):
                 return jobs_list, ""
         except Exception as e:
             if "Proxy responded with" in str(e):
-                log.error(f"Indeed: Bad proxy")
+                log.error(f"Bad proxy")
             else:
-                log.error(f"Indeed: {str(e)}")
+                log.error(f"Error: {str(e)}")
             return jobs_list, ""
 
         res_data = res.json()
@@ -163,6 +165,7 @@ class ZipRecruiter(Scraper):
         """
         Processes an individual job dict from the response
         """
+        time.sleep(random.uniform(0.5, 1.5))  # Delay between processing each job
         title = job.get("name")
         job_url = f"{self.base_url}/jobs//j?lvk={job['listing_key']}"
         if job_url in self.seen_urls:
