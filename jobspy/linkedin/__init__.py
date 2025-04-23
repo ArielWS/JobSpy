@@ -64,7 +64,10 @@ class LinkedIn(Scraper):
             "upgrade-insecure-requests": "1",
             "user-agent": choice(user_agents),  # Randomly select a User-Agent
         }
+        # Log the User-Agent being used for the request
+        log.info(f"Using User-Agent: {headers['user-agent']}")
         return headers
+
     
     def __init__(
         self, proxies: list[str] | str | None = None, ca_cert: str | None = None
