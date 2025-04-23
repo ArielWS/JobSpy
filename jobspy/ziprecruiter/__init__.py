@@ -9,7 +9,7 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 
-from jobspy.ziprecruiter.constant import headers, get_cookie_data
+from jobspy.ziprecruiter.constant import headers, get_cookie_data, user_agents
 from jobspy.util import (
     extract_emails_from_text,
     create_session,
@@ -47,12 +47,50 @@ class ZipRecruiter(Scraper):
 
         self.scraper_input = None
         self.session = create_session(proxies=proxies, ca_cert=ca_cert)
-        self.session.headers.update(headers)
+        self.session.headers.update(headers)  # Use headers from constant.py
         self._get_cookies()
 
         self.delay = 5
         self.jobs_per_page = 20
         self.seen_urls = set()
+
+        # Initialize proxy and user-agent rotation variables
+        self.proxy_index = 0
+        self.request_count = 0
+        self.last_user_agent = None  # Track the last used User-Agent
+        self.user_agent_switch_interval = 5  # Rotate user-agent every 5 requests
+
+    def get_rotated_headers(self):
+        """
+        Rotate both proxies and user-agents. Clear cookies when either proxy or user-agent changes.
+        """
+        # Rotate proxies
+        if isinstance(self.proxies, list):
+            proxy = self.proxies[self.proxy_index % len(self.proxies)]
+            self.proxy_index += 1
+        else:
+            proxy = self.proxies  # If only one proxy is passed, use it continuously
+
+        # Rotate user-agent
+        self.request_count += 1
+        if self.request_count % self.user_agent_switch_interval == 0 or not self.last_user_agent:
+            # Select a random User-Agent from the list in constant.py
+            user_agent = choice(user_agents)
+
+            # Clear cookies if the User-Agent changes
+            if user_agent != self.last_user_agent:
+                log.info(f"Switching to a new User-Agent. Clearing cookies.")
+                self.session.cookies.clear()  # Clear cookies when switching User-Agent
+                self.last_user_agent = user_agent  # Update the last used User-Agent
+            else:
+                log.info(f"Reusing User-Agent: {user_agent}")
+
+        # Set proxy for the session
+        self.session.proxies = {"http": proxy, "https": proxy}
+
+        # Update the session headers with the rotated user-agent
+        self.session.headers.update({"user-agent": self.last_user_agent})  # Use selected User-Agent
+        return self.session.headers  # Return updated headers
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
         """
