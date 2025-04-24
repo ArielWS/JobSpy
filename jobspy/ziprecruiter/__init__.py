@@ -39,8 +39,8 @@ class ZipRecruiter(Scraper):
     api_url  = "https://api.ziprecruiter.com"
 
     def __init__(self,
-                 proxies: list[str] | str | None = None,
-                 ca_cert: str | None            = None):
+                proxies: list[str] | str | None = None,
+                ca_cert: str | None            = None):
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
         # 1) Build raw session with proxy/CA logic
@@ -49,43 +49,38 @@ class ZipRecruiter(Scraper):
         # 2) Wrap in cfscrape to solve Cloudflare JS challenge
         self.session = cfscrape.create_scraper(sess=raw_session)
 
-        # 2.1) Immediately set proxy on the session so priming uses the correct IP
+        # 2.1) Immediately normalize & set proxy on the session so priming uses the correct IP
         if proxies:
             if isinstance(proxies, list):
                 self.proxies = [
-                    p if p.startswith(("http://","https://")) else "http://" + p
+                    p if p.startswith(("http://", "https://")) else "http://" + p
                     for p in proxies
                 ]
             else:
                 self.proxies = (
                     proxies
-                    if proxies.startswith(("http://","https://"))
+                    if proxies.startswith(("http://", "https://"))
                     else "http://" + proxies
                 )
+            # apply the first proxy immediately
+            first = self.proxies[0] if isinstance(self.proxies, list) else self.proxies
+            self.session.proxies = {"http": first, "https": first}
         else:
             self.proxies = None
-
-        # Now immediately set your session.proxies so that the priming calls use a well-formed URL:
-        if self.proxies:
-            self.session.proxies = (
-                {"http": self.proxies, "https": self.proxies}
-                if isinstance(self.proxies, str)
-                else {"http": self.proxies[0], "https": self.proxies[0]}
-            )
 
         # 3) Pick initial real-browser User-Agent and track it
         initial_ua = random.choice(user_agents)
         self.session.headers.update({"User-Agent": initial_ua})
         self.last_user_agent = initial_ua
 
-        # 4) Prime Cloudflare on main‐root, HTML search page, AND API‐root
+        # 4) Prime Cloudflare on:
+        #    a) main site root
+        #    b) the real HTML search page
+        #    c) the API subdomain root
         try:
-            # 4a) main site root
-            self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-            # 4b) the HTML search page (must include trailing slash)
-            self.session.get(self.base_url + "/jobs/", allow_redirects=True, timeout=10)
-            # 4c) API subdomain root
-            self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
+            self.session.get(self.base_url + "/",             allow_redirects=True, timeout=10)
+            self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
+            self.session.get(self.api_url + "/",              allow_redirects=True, timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
 
@@ -96,16 +91,16 @@ class ZipRecruiter(Scraper):
         self._get_cookies()
 
         # --- rest of initialization ---
-        self.delay                    = 1
-        self.jobs_per_page            = 20
-        self.seen_urls                = set()
-        self.proxy_index              = 0
-        self.request_count            = 0
-        self.user_agent_switch_interval = 5
+        self.delay                       = 1
+        self.jobs_per_page               = 20
+        self.seen_urls                   = set()
+        self.proxy_index                 = 0
+        self.request_count               = 0
+        self.user_agent_switch_interval  = 5
 
     def get_rotated_headers(self) -> dict[str, str]:
         """
-        Rotate proxies and user‐agents. When UA changes, clear cookies and re‐prime Cloudflare.
+        Rotate proxies and user-agents. When UA changes, clear cookies and re-prime Cloudflare.
         """
         # ---- Proxy rotation ----
         if isinstance(self.proxies, list):
@@ -136,8 +131,8 @@ class ZipRecruiter(Scraper):
                 try:
                     # 1) main site root
                     self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-                    # 2) HTML search page with trailing slash
-                    self.session.get(self.base_url + "/jobs/", allow_redirects=True, timeout=10)
+                    # 2) HTML search page (use actual search URL)
+                    self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
                     # 3) API subdomain root
                     self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
                 except Exception as e:
