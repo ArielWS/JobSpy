@@ -51,11 +51,10 @@ class ZipRecruiter(Scraper):
 
         # 2.1) Immediately set proxy on the session so priming uses the correct IP
         if proxies:
-            if isinstance(proxies, list):
-                proxy = proxies[0]
-            else:
-                proxy = proxies
-            self.session.proxies = {"http": proxy, "https": proxy}
+            # pick first proxy (or single) and normalize URL
+            proxy = proxies[0] if isinstance(proxies, list) else proxies
+            proxy_url = proxy if proxy.startswith("http") else f"http://{proxy}"
+            self.session.proxies = {"http": proxy_url, "https": proxy_url}
 
         # 3) Pick initial real-browser User-Agent and track it
         initial_ua = random.choice(user_agents)
