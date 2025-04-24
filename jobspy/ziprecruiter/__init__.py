@@ -51,10 +51,27 @@ class ZipRecruiter(Scraper):
 
         # 2.1) Immediately set proxy on the session so priming uses the correct IP
         if proxies:
-            # pick first proxy (or single) and normalize URL
-            proxy = proxies[0] if isinstance(proxies, list) else proxies
-            proxy_url = proxy if proxy.startswith("http") else f"http://{proxy}"
-            self.session.proxies = {"http": proxy_url, "https": proxy_url}
+            if isinstance(proxies, list):
+                self.proxies = [
+                    p if p.startswith(("http://","https://")) else "http://" + p
+                    for p in proxies
+                ]
+            else:
+                self.proxies = (
+                    proxies
+                    if proxies.startswith(("http://","https://"))
+                    else "http://" + proxies
+                )
+        else:
+            self.proxies = None
+
+        # Now immediately set your session.proxies so that the priming calls use a well-formed URL:
+        if self.proxies:
+            self.session.proxies = (
+                {"http": self.proxies, "https": self.proxies}
+                if isinstance(self.proxies, str)
+                else {"http": self.proxies[0], "https": self.proxies[0]}
+            )
 
         # 3) Pick initial real-browser User-Agent and track it
         initial_ua = random.choice(user_agents)
@@ -82,38 +99,43 @@ class ZipRecruiter(Scraper):
         self.request_count            = 0
         self.user_agent_switch_interval = 5
 
-    def get_rotated_headers(self) -> dict[str, str]:
-        """
-        Rotate proxies and user-agents. When UA changes, clear cookies and re-prime Cloudflare.
-        """
-        # ---- Proxy rotation ----
-        if isinstance(self.proxies, list):
-            proxy = self.proxies[self.proxy_index % len(self.proxies)]
-            self.proxy_index += 1
+def get_rotated_headers(self) -> dict[str, str]:
+    """
+    Rotate proxies and user‐agents. When UA changes, clear cookies and re‐prime Cloudflare.
+    """
+    # ---- Proxy rotation ----
+    if isinstance(self.proxies, list):
+        proxy = self.proxies[self.proxy_index % len(self.proxies)]
+        self.proxy_index += 1
+    else:
+        proxy = self.proxies
+
+    # — Normalize the proxy string so requests can CONNECT —
+    if proxy and not proxy.startswith(("http://", "https://")):
+        proxy = "http://" + proxy
+
+    self.session.proxies = {"http": proxy, "https": proxy}
+
+    # ---- UA rotation ----
+    self.request_count += 1
+    if self.request_count % self.user_agent_switch_interval == 0:
+        new_ua = random.choice(user_agents)
+        if new_ua != self.last_user_agent:
+            log.info("Switching to a new User-Agent. Clearing cookies & re-priming Cloudflare.")
+            self.session.cookies.clear()
+            self.session.headers.update({"User-Agent": new_ua})
+            self.last_user_agent = new_ua
+
+            # Re-prime Cloudflare under new UA+proxy
+            try:
+                self.session.get(self.base_url, timeout=5)
+                self.session.get(f"{self.base_url}/jobs", timeout=5)
+            except Exception as e:
+                log.warning(f"Failed to re-prime Cloudflare after UA rotation: {e}")
         else:
-            proxy = self.proxies
-        self.session.proxies = {"http": proxy, "https": proxy}
+            log.info(f"Reusing existing User-Agent: {new_ua}")
 
-        # ---- UA rotation ----
-        self.request_count += 1
-        if self.request_count % self.user_agent_switch_interval == 0:
-            new_ua = random.choice(user_agents)
-            if new_ua != self.last_user_agent:
-                log.info("Switching to a new User-Agent. Clearing cookies & re-priming Cloudflare.")
-                self.session.cookies.clear()
-                self.session.headers.update({"User-Agent": new_ua})
-                self.last_user_agent = new_ua
-
-                # Re-prime Cloudflare under new UA+proxy
-                try:
-                    self.session.get(self.base_url, timeout=5)
-                    self.session.get(f"{self.base_url}/jobs", timeout=5)
-                except Exception as e:
-                    log.warning(f"Failed to re-prime Cloudflare after UA rotation: {e}")
-            else:
-                log.info(f"Reusing existing User-Agent: {new_ua}")
-
-        return dict(self.session.headers)
+    return dict(self.session.headers)
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
         """
