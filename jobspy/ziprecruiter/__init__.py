@@ -46,12 +46,12 @@ HTML_HEADERS = {
 
 class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
-    api_url = "https://api.ziprecruiter.com"
+    api_url  = "https://api.ziprecruiter.com"
 
     def __init__(
         self,
         proxies: list[str] | str | None = None,
-        ca_cert: str | None = None
+        ca_cert: str | None            = None
     ):
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
@@ -88,7 +88,9 @@ class ZipRecruiter(Scraper):
             self.session.headers.update(HTML_HEADERS)
             self.session.headers["Referer"] = f"{self.base_url}/"
             self.session.get(
-                self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10
+                self.base_url + "/Search-Jobs-Near-Me",
+                allow_redirects=True,
+                timeout=10,
             )
 
             # API subdomain priming
@@ -136,12 +138,15 @@ class ZipRecruiter(Scraper):
                 log.info("Switching to a new User-Agent. Clearing cookies & re-priming Cloudflare.")
                 self.session.cookies.clear()
 
+                # Rebuild mobile-API headers with new UA
                 api_headers = {**headers, "User-Agent": new_ua}
                 self.session.headers.update(api_headers)
                 self.last_user_agent = new_ua
 
+                # Reseed cookies with the new UA
                 self._get_cookies()
 
+                # Re-prime Cloudflare challenges
                 try:
                     self.session.headers.update(HTML_HEADERS)
                     self.session.headers["Referer"] = f"{self.base_url}/"
