@@ -59,17 +59,24 @@ class ZipRecruiter(Scraper):
         raw_session = create_session(proxies=proxies, ca_cert=ca_cert)
         self.session = cfscrape.create_scraper(sess=raw_session)
 
-        # 1.1) Normalize & apply the first proxy if provided
+                # 1.1) Normalize & apply the first proxy if provided
         if proxies:
             if isinstance(proxies, list):
                 self.proxies = [
                     p if p.startswith(("http://", "https://")) else "http://" + p
                     for p in proxies
                 ]
-                    else:
+            else:
+                self.proxies = [
+                    proxies if proxies.startswith(("http://", "https://")) else "http://" + proxies
+                ]
+            # Apply first proxy immediately
+            first = self.proxies[0]
+            self.session.proxies.update({"http": first, "https": first})
+        else:
             self.proxies = []
 
-        # 2) Pick initial User-Agent for priming
+        # 2) Pick initial User-Agent for priming for priming
         initial_ua = random.choice(user_agents)
         # Set UA only, no HTML headers here to solve Cloudflare JS challenge
         self.session.headers.update({"User-Agent": initial_ua})
@@ -111,8 +118,6 @@ class ZipRecruiter(Scraper):
         self.proxy_index = 0
         self.request_count = 0
         self.user_agent_switch_interval = 5
-
-
 
 
     def get_rotated_headers(self) -> dict[str, str]:
