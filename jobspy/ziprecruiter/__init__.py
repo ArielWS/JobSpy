@@ -13,7 +13,6 @@ from jobspy.ziprecruiter.constant import (
     headers,
     build_cookie_payload_with_live_ts_and_ua,
     user_agents,
-    get_cookie_data,
 )
 from jobspy.util import (
     extract_emails_from_text,
@@ -39,7 +38,6 @@ import cfscrape
 
 log = create_logger("ZipRecruiter")
 
-
 # Browser-like headers for HTML page fetches
 HTML_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -48,12 +46,12 @@ HTML_HEADERS = {
 
 class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
-    api_url  = "https://api.ziprecruiter.com"
+    api_url = "https://api.ziprecruiter.com"
 
     def __init__(
         self,
         proxies: list[str] | str | None = None,
-        ca_cert: str | None            = None
+        ca_cert: str | None = None
     ):
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
@@ -90,9 +88,7 @@ class ZipRecruiter(Scraper):
             self.session.headers.update(HTML_HEADERS)
             self.session.headers["Referer"] = f"{self.base_url}/"
             self.session.get(
-                self.base_url + "/Search-Jobs-Near-Me",
-                allow_redirects=True,
-                timeout=10,
+                self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10
             )
 
             # API subdomain priming
@@ -126,47 +122,35 @@ class ZipRecruiter(Scraper):
             log.error("No proxies available for rotation!")
             return {}
 
-        # Rotate proxies if a list is provided
-        if isinstance(self.proxies, list) and len(self.proxies) > 0:
-            proxy = self.proxies[self.proxy_index % len(self.proxies)]
-            self.proxy_index += 1
-        else:
-            proxy = self.proxies  # Fallback if no proxy list is provided
-
-        # Normalize the proxy format to ensure it starts with http:// or https://
+        proxy = self.proxies[self.proxy_index % len(self.proxies)]
+        self.proxy_index += 1
         if proxy and not proxy.startswith(("http://", "https://")):
             proxy = "http://" + proxy
-        
         self.session.proxies.update({"http": proxy, "https": proxy})
 
         # ---- User-Agent rotation ----
         self.request_count += 1
         if self.request_count % self.user_agent_switch_interval == 0:
-            new_ua = random.choice(USER_AGENTS)
+            new_ua = random.choice(user_agents)
             if new_ua != self.last_user_agent:
                 log.info("Switching to a new User-Agent. Clearing cookies & re-priming Cloudflare.")
-                # Clear cookies since we're changing User-Agent
                 self.session.cookies.clear()
 
-                # Rebuild API headers with the new User-Agent
-                api_headers = {**API_HEADERS, "User-Agent": new_ua}
+                api_headers = {**headers, "User-Agent": new_ua}
                 self.session.headers.update(api_headers)
                 self.last_user_agent = new_ua
 
-                # Reseed cookies with the new User-Agent
                 self._get_cookies()
 
-                # Re-prime Cloudflare challenges with the new headers
                 try:
-                    # Set browser-like headers for priming
                     self.session.headers.update(HTML_HEADERS)
                     self.session.headers["Referer"] = f"{self.base_url}/"
-                    
-                    # Priming the HTML domain
                     self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-                    self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
-
-                    # API subdomain priming
+                    self.session.get(
+                        self.base_url + "/Search-Jobs-Near-Me",
+                        allow_redirects=True,
+                        timeout=10,
+                    )
                     self.session.headers.update({"User-Agent": new_ua})
                     self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
                 except Exception as e:
@@ -174,25 +158,18 @@ class ZipRecruiter(Scraper):
             else:
                 log.info(f"Reusing existing User-Agent: {new_ua}")
 
-        # Return the updated headers
         return dict(self.session.headers)
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
-        """
-        Scrapes ZipRecruiter for jobs with scraper_input criteria.
-        :param scraper_input: Information about job search criteria.
-        :return: JobResponse containing a list of jobs.
-        """
         self.scraper_input = scraper_input
         job_list: list[JobPost] = []
         continue_token = None
-
         max_pages = math.ceil(scraper_input.results_wanted / self.jobs_per_page)
         for page in range(1, max_pages + 1):
             if len(job_list) >= scraper_input.results_wanted:
                 break
             if page > 1:
-                time.sleep(random.uniform(0.5, 2))  # Random delay between 3 and 7 seconds between page requests
+                time.sleep(random.uniform(0.5, 2))
             log.info(f"search page: {page} / {max_pages}")
             jobs_on_page, continue_token = self._find_jobs_in_page(
                 scraper_input, continue_token
@@ -208,16 +185,11 @@ class ZipRecruiter(Scraper):
     def _find_jobs_in_page(
         self, scraper_input: ScraperInput, continue_token: str | None = None
     ) -> tuple[list[JobPost], str | None]:
-        """
-        Scrapes a page of ZipRecruiter for jobs with scraper_input criteria,
-        rotating UA/proxy & clearing cookies when needed.
-        """
         jobs_list: list[JobPost] = []
         params = add_params(scraper_input)
         if continue_token:
             params["continue_from"] = continue_token
 
-        # --- rotate UA/proxy/cookies if it’s time ---
         self.get_rotated_headers()
 
         try:
@@ -238,29 +210,21 @@ class ZipRecruiter(Scraper):
                     )
                 return [], None
         except Exception as e:
-            if "Proxy responded with" in str(e):
-                log.error("Bad proxy")
-            else:
-                log.error(f"Error fetching jobs page: {e}")
+            log.error(f"Error fetching jobs page: {e}")
             return [], None
 
         data = res.json()
         raw_jobs = data.get("jobs", [])
         next_token = data.get("continue")
 
-        # process each job concurrently
         with ThreadPoolExecutor(max_workers=self.jobs_per_page) as executor:
             futures = [executor.submit(self._process_job, j) for j in raw_jobs]
         jobs_list = [job for job in (f.result() for f in futures) if job]
 
         return jobs_list, next_token
 
-
     def _process_job(self, job: dict) -> JobPost | None:
-        """
-        Processes an individual job dict from the response
-        """
-        time.sleep(random.uniform(0.5, 1.5))  # Delay between processing each job
+        time.sleep(random.uniform(0.5, 1.5))
         title = job.get("name")
         job_url = f"{self.base_url}/jobs//j?lvk={job['listing_key']}"
         if job_url in self.seen_urls:
@@ -313,33 +277,25 @@ class ZipRecruiter(Scraper):
         )
 
     def _get_descr(self, job_url):
-        # snapshot the current headers
         old_headers = dict(self.session.headers)
-
-        # inject browser-like headers
         self.session.headers.update(HTML_HEADERS)
         self.session.headers["Referer"] = f"{self.base_url}/Search-Jobs-Near-Me"
 
         res = self.session.get(job_url, allow_redirects=True, timeout=10)
         description_full = job_url_direct = None
-        
         if res.ok:
             soup = BeautifulSoup(res.text, "html.parser")
             job_descr_div = soup.find("div", class_="job_description")
             company_descr_section = soup.find("section", class_="company_description")
-            
             job_description_clean = (
                 remove_attributes(job_descr_div).prettify(formatter="html")
-                if job_descr_div
-                else ""
+                if job_descr_div else ""
             )
             company_description_clean = (
                 remove_attributes(company_descr_section).prettify(formatter="html")
-                if company_descr_section
-                else ""
+                if company_descr_section else ""
             )
             description_full = job_description_clean + company_description_clean
-
             try:
                 script_tag = soup.find("script", type="application/json")
                 if script_tag:
@@ -350,19 +306,15 @@ class ZipRecruiter(Scraper):
                         job_url_direct = m.group(1)
             except:
                 job_url_direct = None
-
-            # Convert description to Markdown if required
             if self.scraper_input.description_format == DescriptionFormat.MARKDOWN:
                 description_full = markdown_converter(description_full)
-
-        # restore the original headers
         self.session.headers.clear()
         self.session.headers.update(old_headers)
-
+        return description_full, job_url_direct
 
     def _get_cookies(self):
         url = f"{self.api_url}/jobs-app/event"
-        ua  = self.session.headers["User-Agent"]
+        ua = self.session.headers["User-Agent"]
         payload = build_cookie_payload_with_live_ts_and_ua(ua)
         res = self.session.post(url, data=payload, timeout=10)
         res.raise_for_status()
