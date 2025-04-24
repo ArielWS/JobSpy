@@ -75,21 +75,27 @@ class ZipRecruiter(Scraper):
         else:
             self.proxies = []
 
-        # 2) Pick initial User-Agent for priming
+        # 2) Pick initial User-Agent and set browser headers for priming
         initial_ua = random.choice(user_agents)
-        self.session.headers.update({"User-Agent": initial_ua})
+        self.session.headers.update({"User-Agent": initial_ua, **HTML_HEADERS, "Referer": self.base_url + "/"})
 
-        # 3) Prime Cloudflare JS challenge on HTML and API domains
+        # 3) Prime Cloudflare JS challenge on HTML domains
         try:
-            # HTML domain
             self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
             self.session.get(
-                self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10
+                self.base_url + "/Search-Jobs-Near-Me",
+                allow_redirects=True,
+                timeout=10,
             )
-            # API subdomain
+        except Exception as e:
+            log.warning(f"Could not prime Cloudflare clearance on HTML: {e}")
+
+        # Prime API subdomain (using default UA header)
+        try:
+            self.session.headers.update({"User-Agent": initial_ua})
             self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
         except Exception as e:
-            log.warning(f"Could not prime Cloudflare clearance: {e}")
+            log.warning(f"Could not prime Cloudflare clearance on API: {e}")
 
         # 4) Apply mobile-API headers with dynamic UA
         api_headers = {**headers, "User-Agent": initial_ua}
@@ -106,6 +112,7 @@ class ZipRecruiter(Scraper):
         self.proxy_index = 0
         self.request_count = 0
         self.user_agent_switch_interval = 5
+
 
 
 
