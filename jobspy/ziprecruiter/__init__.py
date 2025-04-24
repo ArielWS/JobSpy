@@ -56,9 +56,6 @@ class ZipRecruiter(Scraper):
         # 3) wrap it in cfscrape so Cloudflare’s JS challenge is auto-solved
         self.session = cfscrape.create_scraper(sess=raw_session)
 
-        # 4) apply your static headers
-        self.session.headers.update(headers)
-
         # 4.1) prime Cloudflare: hit two real HTML pages so cfscrape can solve the JS-challenge
         try:
             #  – main homepage
@@ -67,6 +64,10 @@ class ZipRecruiter(Scraper):
             self.session.get(f"{self.base_url}/jobs", timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
+
+
+        # 4.2) now apply your API headers (Host: api.ziprecruiter.com, auth, etc.)
+        self.session.headers.update(headers)
 
         # 5) seed the cookies, etc.
         self._get_cookies()
