@@ -10,10 +10,10 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 from jobspy.ziprecruiter.constant import (
-    API_HEADERS,
-    build_cookie_payload,
-    USER_AGENTS,
-    HTML_HEADERS,
+    headers,
+    build_cookie_payload_with_live_ts_and_ua,
+    user_agents,
+    get_cookie_data,
 )
 from jobspy.util import (
     extract_emails_from_text,
@@ -40,14 +40,20 @@ import cfscrape
 log = create_logger("ZipRecruiter")
 
 
+# Browser-like headers for HTML page fetches
+HTML_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
-    api_url = "https://api.ziprecruiter.com"
+    api_url  = "https://api.ziprecruiter.com"
 
     def __init__(
         self,
         proxies: list[str] | str | None = None,
-        ca_cert: str | None = None
+        ca_cert: str | None            = None
     ):
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
@@ -63,18 +69,16 @@ class ZipRecruiter(Scraper):
                     for p in proxies
                 ]
             else:
-                self.proxies = (
-                    proxies
-                    if proxies.startswith(("http://", "https://"))
-                    else "http://" + proxies
-                )
-            first = self.proxies[0] if isinstance(self.proxies, list) else self.proxies
+                self.proxies = [
+                    proxies if proxies.startswith(("http://", "https://")) else "http://" + proxies
+                ]
+            first = self.proxies[0]
             self.session.proxies.update({"http": first, "https": first})
         else:
-            self.proxies = []  # Ensure self.proxies is initialized as an empty list if no proxies are passed
+            self.proxies = []
 
         # 2) Pick initial User-Agent
-        initial_ua = random.choice(USER_AGENTS)
+        initial_ua = random.choice(user_agents)
 
         # 3) Prime Cloudflare JS challenge on HTML and API domains
         try:
@@ -83,9 +87,13 @@ class ZipRecruiter(Scraper):
 
             # HTML domain priming
             self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-            self.session.headers.update(HTML_HEADERS)  # Set HTML-specific headers
+            self.session.headers.update(HTML_HEADERS)
             self.session.headers["Referer"] = f"{self.base_url}/"
-            self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
+            self.session.get(
+                self.base_url + "/Search-Jobs-Near-Me",
+                allow_redirects=True,
+                timeout=10,
+            )
 
             # API subdomain priming
             self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
@@ -93,12 +101,12 @@ class ZipRecruiter(Scraper):
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
 
-        # 4) Build API headers with dynamic UA and apply
-        api_headers = {**API_HEADERS, "User-Agent": initial_ua}
+        # 4) Apply mobile-API headers with dynamic UA
+        api_headers = {**headers, "User-Agent": initial_ua}
         self.session.headers.update(api_headers)
-        self.last_user_agent = initial_ua  # Store the initial User-Agent for later rotations
+        self.last_user_agent = initial_ua
 
-        # 5) Seed cookies via the event call (to properly set up session cookies)
+        # 5) Seed cookies via the event call (fresh TS & UA)
         self._get_cookies()
 
         # 6) Initialize internal state
@@ -354,7 +362,7 @@ class ZipRecruiter(Scraper):
 
     def _get_cookies(self):
         url = f"{self.api_url}/jobs-app/event"
-        ua = self.session.headers["User-Agent"]
-        payload = build_cookie_payload(ua)
+        ua  = self.session.headers["User-Agent"]
+        payload = build_cookie_payload_with_live_ts_and_ua(ua)
         res = self.session.post(url, data=payload, timeout=10)
         res.raise_for_status()
