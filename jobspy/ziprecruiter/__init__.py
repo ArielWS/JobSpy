@@ -297,16 +297,21 @@ class ZipRecruiter(Scraper):
         )
 
     def _get_descr(self, job_url):
+        # snapshot the current headers
+        old_headers = dict(self.session.headers)
+
         # inject browser-like headers
         self.session.headers.update(HTML_HEADERS)
         self.session.headers["Referer"] = f"{self.base_url}/Search-Jobs-Near-Me"
 
         res = self.session.get(job_url, allow_redirects=True, timeout=10)
         description_full = job_url_direct = None
+        
         if res.ok:
             soup = BeautifulSoup(res.text, "html.parser")
             job_descr_div = soup.find("div", class_="job_description")
             company_descr_section = soup.find("section", class_="company_description")
+            
             job_description_clean = (
                 remove_attributes(job_descr_div).prettify(formatter="html")
                 if job_descr_div
@@ -330,10 +335,14 @@ class ZipRecruiter(Scraper):
             except:
                 job_url_direct = None
 
+            # Convert description to Markdown if required
             if self.scraper_input.description_format == DescriptionFormat.MARKDOWN:
                 description_full = markdown_converter(description_full)
 
-        return description_full, job_url_direct
+        # restore the original headers
+        self.session.headers.clear()
+        self.session.headers.update(old_headers)
+
 
     def _get_cookies(self):
         url = f"{self.api_url}/jobs-app/event"
