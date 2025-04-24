@@ -9,7 +9,12 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 
-from jobspy.ziprecruiter.constant import headers, get_cookie_data, user_agents
+from jobspy.ziprecruiter.constant import (
+    API_HEADERS,
+    build_cookie_payload,
+    USER_AGENTS,
+    HTML_HEADERS,
+)
 from jobspy.util import (
     extract_emails_from_text,
     create_session,
@@ -38,18 +43,18 @@ class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
     api_url  = "https://api.ziprecruiter.com"
 
-    def __init__(self,
-                proxies: list[str] | str | None = None,
-                ca_cert: str | None            = None):
+    def __init__(
+        self,
+        proxies: list[str] | str | None = None,
+        ca_cert: str | None            = None
+    ):
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
         # 1) Build raw session with proxy/CA logic
         raw_session = create_session(proxies=proxies, ca_cert=ca_cert)
-
-        # 2) Wrap in cfscrape to solve Cloudflare JS challenge
         self.session = cfscrape.create_scraper(sess=raw_session)
 
-        # 2.1) Immediately normalize & set proxy on the session so priming uses the correct IP
+        # 1.1) Normalize & apply the first proxy if provided
         if proxies:
             if isinstance(proxies, list):
                 self.proxies = [
@@ -62,41 +67,45 @@ class ZipRecruiter(Scraper):
                     if proxies.startswith(("http://", "https://"))
                     else "http://" + proxies
                 )
-            # apply the first proxy immediately
             first = self.proxies[0] if isinstance(self.proxies, list) else self.proxies
-            self.session.proxies = {"http": first, "https": first}
+            self.session.proxies.update({"http": first, "https": first})
         else:
             self.proxies = None
 
-        # 3) Pick initial real-browser User-Agent and track it
-        initial_ua = random.choice(user_agents)
-        self.session.headers.update({"User-Agent": initial_ua})
-        self.last_user_agent = initial_ua
+        # 2) Pick initial User-Agent
+        initial_ua = random.choice(USER_AGENTS)
 
-        # 4) Prime Cloudflare on:
-        #    a) main site root
-        #    b) the real HTML search page
-        #    c) the API subdomain root
+        # 3) Prime Cloudflare JS challenge on HTML and API domains
         try:
-            self.session.get(self.base_url + "/",             allow_redirects=True, timeout=10)
-            self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
-            self.session.get(self.api_url + "/",              allow_redirects=True, timeout=10)
+            # Set UA for priming
+            self.session.headers.update({"User-Agent": initial_ua})
+            # HTML domain
+            self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
+            self.session.headers.update(HTML_HEADERS)
+            self.session.headers["Referer"] = f"{self.base_url}/"
+            self.session.get(
+                self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10
+            )
+            # API subdomain
+            self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
 
-        # 5) Layer on API-specific headers
-        self.session.headers.update(headers)
+        # 4) Build API headers with dynamic UA and apply
+        api_headers = {**API_HEADERS, "User-Agent": initial_ua}
+        self.session.headers.update(api_headers)
+        self.last_user_agent = initial_ua
 
-        # 6) Seed cookies via the event call
+        # 5) Seed cookies via the event call
         self._get_cookies()
 
-        # --- rest of initialization ---
-        self.delay                       = 1
-        self.jobs_per_page               = 20
-        self.seen_urls                   = set()
-        self.proxy_index                 = 0
-        self.request_count               = 0
-        self.user_agent_switch_interval  = 5
+        # 6) Initialize internal state
+        self.delay = 1
+        self.jobs_per_page = 20
+        self.seen_urls = set()
+        self.proxy_index = 0
+        self.request_count = 0
+        self.user_agent_switch_interval = 5
 
     def get_rotated_headers(self) -> dict[str, str]:
         """
@@ -109,31 +118,41 @@ class ZipRecruiter(Scraper):
         else:
             proxy = self.proxies
 
-        # — Normalize the proxy string so requests can CONNECT —
+        # Normalize proxy URL
         if proxy and not proxy.startswith(("http://", "https://")):
             proxy = "http://" + proxy
-
-        self.session.proxies = {"http": proxy, "https": proxy}
+        self.session.proxies.update({"http": proxy, "https": proxy})
 
         # ---- UA rotation ----
         self.request_count += 1
         if self.request_count % self.user_agent_switch_interval == 0:
-            new_ua = random.choice(user_agents)
+            new_ua = random.choice(USER_AGENTS)
             if new_ua != self.last_user_agent:
                 log.info("Switching to a new User-Agent. Clearing cookies & re-priming Cloudflare.")
-                # clear existing cookies
+                # clear cookies
                 self.session.cookies.clear()
-                # update header
-                self.session.headers.update({"User-Agent": new_ua})
+
+                # Rebuild API headers with new UA
+                api_headers = {**API_HEADERS, "User-Agent": new_ua}
+                self.session.headers.update(api_headers)
                 self.last_user_agent = new_ua
 
-                # Re-prime Cloudflare on all three challenge endpoints
+                # Reseed cookies with the new UA
+                self._get_cookies()
+
+                # Re-prime Cloudflare challenges
                 try:
-                    # 1) main site root
+                    # HTML domain priming with updated headers
+                    self.session.headers.update(HTML_HEADERS)
+                    self.session.headers["Referer"] = f"{self.base_url}/"
                     self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-                    # 2) HTML search page (use actual search URL)
-                    self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
-                    # 3) API subdomain root
+                    self.session.get(
+                        self.base_url + "/Search-Jobs-Near-Me",
+                        allow_redirects=True,
+                        timeout=10,
+                    )
+                    # API subdomain priming
+                    self.session.headers.update({"User-Agent": new_ua})
                     self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
                 except Exception as e:
                     log.warning(f"Failed to re-prime Cloudflare after UA rotation: {e}")
@@ -278,7 +297,11 @@ class ZipRecruiter(Scraper):
         )
 
     def _get_descr(self, job_url):
-        res = self.session.get(job_url, allow_redirects=True)
+        # inject browser-like headers
+        self.session.headers.update(HTML_HEADERS)
+        self.session.headers["Referer"] = f"{self.base_url}/Search-Jobs-Near-Me"
+
+        res = self.session.get(job_url, allow_redirects=True, timeout=10)
         description_full = job_url_direct = None
         if res.ok:
             soup = BeautifulSoup(res.text, "html.parser")
@@ -313,11 +336,8 @@ class ZipRecruiter(Scraper):
         return description_full, job_url_direct
 
     def _get_cookies(self):
-        """
-        Sends a session event to the API with device properties.
-        """
         url = f"{self.api_url}/jobs-app/event"
-        # clone our cookie‐data and append the current UA
-        payload = list(get_cookie_data)
-        payload.append(("property", f"user_agent:{self.session.headers['User-Agent']}"))
-        self.session.post(url, data=payload)
+        ua = self.session.headers["User-Agent"]
+        payload = build_cookie_payload(ua)
+        res = self.session.post(url, data=payload, timeout=10)
+        res.raise_for_status()
