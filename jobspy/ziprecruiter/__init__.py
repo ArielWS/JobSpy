@@ -30,35 +30,46 @@ from jobspy.model import (
 )
 from jobspy.ziprecruiter.util import get_job_type_enum, add_params
 
+import cfscrape
+
 log = create_logger("ZipRecruiter")
 
 
 class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
-    api_url = "https://api.ziprecruiter.com"
+    api_url  = "https://api.ziprecruiter.com"
 
-    def __init__(
-        self, proxies: list[str] | str | None = None, ca_cert: str | None = None
-    ):
+    def __init__(self,
+                 proxies: list[str] | str | None = None,
+                 ca_cert: str | None            = None):
         """
         Initializes ZipRecruiterScraper with the ZipRecruiter job search url
         """
+        # 1) keep the base Scraper init (site, proxy list, etc)
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
         self.scraper_input = None
-        self.session = create_session(proxies=proxies, ca_cert=ca_cert)
-        self.session.headers.update(headers)  # Use headers from constant.py
+
+        # 2) create the underlying Session with your proxy + CA logic
+        raw_session = create_session(proxies=proxies, ca_cert=ca_cert)
+
+        # 3) wrap it in cfscrape so Cloudflare’s JS challenge is auto-solved
+        self.session = cfscrape.create_scraper(sess=raw_session)
+
+        # 4) apply your static headers
+        self.session.headers.update(headers)
+
+        # 5) seed the cookies, etc.
         self._get_cookies()
 
-        self.delay = 1  # Base delay between page requests
-        self.jobs_per_page = 20
-        self.seen_urls = set()
-
-        # Initialize proxy and user-agent rotation variables
-        self.proxy_index = 0
-        self.request_count = 0
-        self.last_user_agent = None  # Track the last used User-Agent
-        self.user_agent_switch_interval = 5  # Rotate user-agent every 5 requests
+        # --- rest of your initialization ---
+        self.delay                    = 1
+        self.jobs_per_page            = 20
+        self.seen_urls                = set()
+        self.proxy_index              = 0
+        self.request_count            = 0
+        self.last_user_agent          = None
+        self.user_agent_switch_interval = 5
 
     def get_rotated_headers(self):
         """
