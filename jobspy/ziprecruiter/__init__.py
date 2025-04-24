@@ -59,10 +59,12 @@ class ZipRecruiter(Scraper):
         # 4) apply your static headers
         self.session.headers.update(headers)
 
-        # 4.1) prime Cloudflare: hit an HTML page & the API root so cfscrape solves the JS challenge
+        # 4.1) prime Cloudflare: hit two real HTML pages so cfscrape can solve the JS-challenge
         try:
+            #  – main homepage
             self.session.get(self.base_url, timeout=10)
-            self.session.get(self.api_url,   timeout=10)
+            #  – the HTML search page (not JSON)
+            self.session.get(f"{self.base_url}/jobs", timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
 
