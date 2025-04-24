@@ -19,6 +19,7 @@ class JobType(Enum):
         "tempointegral",
         "全职",
         "plnýúvazek",
+        "plnýúväzok",
         "fuldtid",
         "دوامكامل",
         "kokopäivätyö",
@@ -39,8 +40,8 @@ class JobType(Enum):
         "повназайнятість",
         "toànthờigian",
     )
-    PART_TIME = ("parttime", "teilzeit", "částečnýúvazek", "deltid")
-    CONTRACT = ("contract", "contractor")
+    PART_TIME = ("parttime", "teilzeit", "částečnýúvazek", "čiastočnýúväzok ", "deltid")
+    CONTRACT = ("contract", "contractor", "kontract")
     TEMPORARY = ("temporary",)
     INTERNSHIP = (
         "internship",
@@ -48,6 +49,7 @@ class JobType(Enum):
         "ojt(onthejobtraining)",
         "praktikum",
         "praktik",
+        "brigáda"
     )
 
     PER_DIEM = ("perdiem",)
