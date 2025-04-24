@@ -49,6 +49,14 @@ class ZipRecruiter(Scraper):
         # 2) Wrap in cfscrape to solve Cloudflare JS challenge
         self.session = cfscrape.create_scraper(sess=raw_session)
 
+        # 2.1) Immediately set proxy on the session so priming uses the correct IP
+        if proxies:
+            if isinstance(proxies, list):
+                proxy = proxies[0]
+            else:
+                proxy = proxies
+            self.session.proxies = {"http": proxy, "https": proxy}
+
         # 3) Pick initial real-browser User-Agent and track it
         initial_ua = random.choice(user_agents)
         self.session.headers.update({"User-Agent": initial_ua})
@@ -56,7 +64,7 @@ class ZipRecruiter(Scraper):
 
         # 4) Prime Cloudflare for both domains under this proxy+UA
         try:
-            self.session.get(self.base_url, timeout=10)
+            self.session.get(self.base_url, timeout=3)
             self.session.get(f"{self.base_url}/jobs", timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
@@ -140,42 +148,52 @@ class ZipRecruiter(Scraper):
         self, scraper_input: ScraperInput, continue_token: str | None = None
     ) -> tuple[list[JobPost], str | None]:
         """
-        Scrapes a page of ZipRecruiter for jobs with scraper_input criteria
-        :param scraper_input:
-        :param continue_token:
-        :return: jobs found on page
+        Scrapes a page of ZipRecruiter for jobs with scraper_input criteria,
+        rotating UA/proxy & clearing cookies when needed.
         """
-        jobs_list = []
+        jobs_list: list[JobPost] = []
         params = add_params(scraper_input)
         if continue_token:
             params["continue_from"] = continue_token
+
+        # --- rotate UA/proxy/cookies if it’s time ---
+        self.get_rotated_headers()
+
         try:
-            res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
-            time.sleep(random.uniform(0.5, 1.5))  # Random delay between 2 and 4 seconds after the request
+            res = self.session.get(
+                f"{self.api_url}/jobs-app/jobs",
+                params=params,
+                timeout=1,
+            )
+            time.sleep(random.uniform(0.5, 1.5))
             if res.status_code not in range(200, 400):
                 if res.status_code == 429:
-                    log.error("429 Response - Blocked by ZipRecruiter for too many requests")
-                    time.sleep(random.uniform(2, 3))  # Longer random delay if rate-limited
+                    log.error("429 Response - rate-limited by ZipRecruiter")
+                    time.sleep(random.uniform(2, 3))
                 else:
-                    err = f"ZipRecruiter response status code {res.status_code}"
-                    err += f" with response: {res.text}"  # ZipRecruiter likely not available in EU
-                log.error(err)
-                return jobs_list, ""
+                    log.error(
+                        f"ZipRecruiter response status code {res.status_code} "
+                        f"with response: {res.text}"
+                    )
+                return [], None
         except Exception as e:
             if "Proxy responded with" in str(e):
-                log.error(f"Bad proxy")
+                log.error("Bad proxy")
             else:
-                log.error(f"Error: {str(e)}")
-            return jobs_list, ""
+                log.error(f"Error fetching jobs page: {e}")
+            return [], None
 
-        res_data = res.json()
-        jobs_list = res_data.get("jobs", [])
-        next_continue_token = res_data.get("continue", None)
+        data = res.json()
+        raw_jobs = data.get("jobs", [])
+        next_token = data.get("continue")
+
+        # process each job concurrently
         with ThreadPoolExecutor(max_workers=self.jobs_per_page) as executor:
-            job_results = [executor.submit(self._process_job, job) for job in jobs_list]
+            futures = [executor.submit(self._process_job, j) for j in raw_jobs]
+        jobs_list = [job for job in (f.result() for f in futures) if job]
 
-        job_list = list(filter(None, (result.result() for result in job_results)))
-        return job_list, next_continue_token
+        return jobs_list, next_token
+
 
     def _process_job(self, job: dict) -> JobPost | None:
         """
@@ -273,4 +291,7 @@ class ZipRecruiter(Scraper):
         Sends a session event to the API with device properties.
         """
         url = f"{self.api_url}/jobs-app/event"
-        self.session.post(url, data=get_cookie_data)
+        # clone our cookie‐data and append the current UA
+        payload = list(get_cookie_data)
+        payload.append(("property", f"user_agent:{self.session.headers['User-Agent']}"))
+        self.session.post(url, data=payload)
