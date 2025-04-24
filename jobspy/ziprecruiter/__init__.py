@@ -38,12 +38,26 @@ import cfscrape
 
 log = create_logger("ZipRecruiter")
 
-# Browser-like headers for HTML page fetches
+# Browser-like headers for HTML page fetches (including Client Hint headers)
 HTML_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Cache-Control": "max-age=0",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Sec-CH-UA": '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+    "Sec-CH-UA-Mobile": "?0",
+    "Sec-CH-UA-Platform": "macOS",
+    "Sec-CH-UA-Full-Version": "135.0.7049.96",
+    "Sec-CH-UA-Arch": "x86",
+    "Sec-CH-UA-Bitness": "64",
+    "Sec-CH-UA-Model": "",
+    "Sec-CH-UA-Platform-Version": "11.7.10",
 }
-
 
 class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
@@ -52,7 +66,7 @@ class ZipRecruiter(Scraper):
     def __init__(
         self,
         proxies: list[str] | str | None = None,
-        ca_cert: str | None            = None
+        ca_cert: str | None            = None,
     ):
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
@@ -79,21 +93,21 @@ class ZipRecruiter(Scraper):
         # 2) Choose initial User-Agent
         initial_ua = random.choice(user_agents)
 
-        # 3) Prime Cloudflare JS challenge on HTML domains
+        # 3) Prime Cloudflare JS challenge on HTML domains (browser-style)
         self.session.headers.update({"User-Agent": initial_ua, **HTML_HEADERS, "Referer": self.base_url + "/"})
         try:
             self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
             self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
         except Exception as e:
-            log.warning(f"Could not prime Cloudflare clearance on HTML: {e}")
+            log.warning(f"Could not prime Cloudflare on HTML: {e}")
 
-        # 4) Prime API subdomain with mobile-API headers
+        # 4) Prime API subdomain (mobile-API headers)
         api_headers = {**headers, "User-Agent": initial_ua}
         self.session.headers.update(api_headers)
         try:
             self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
         except Exception as e:
-            log.warning(f"Could not prime Cloudflare clearance on API: {e}")
+            log.warning(f"Could not prime Cloudflare on API: {e}")
 
         # 5) Seed cookies via the event call
         self.last_user_agent = initial_ua
@@ -109,49 +123,44 @@ class ZipRecruiter(Scraper):
 
     def get_rotated_headers(self) -> dict[str, str]:
         """
-        Rotate proxies and user-agents. When UA changes, re-prime both HTML and API endpoints.
+        Rotate proxies and user-agents; re-prime HTML & API endpoints when UA changes.
         """
-        # ---- Proxy rotation ----
+        # Proxy rotation
         if not self.proxies:
             log.error("No proxies available for rotation!")
             return {}
-
         proxy = self.proxies[self.proxy_index % len(self.proxies)]
         self.proxy_index += 1
         if proxy and not proxy.startswith(("http://", "https://")):
             proxy = "http://" + proxy
         self.session.proxies.update({"http": proxy, "https": proxy})
 
-        # ---- UA rotation ----
+        # UA rotation
         self.request_count += 1
         if self.request_count % self.user_agent_switch_interval == 0:
             new_ua = random.choice(user_agents)
             if new_ua != self.last_user_agent:
-                log.info("Switching to a new User-Agent. Clearing cookies & re-priming.")
+                log.info("Switching UA, clearing cookies & re-priming.")
                 self.session.cookies.clear()
-
                 # HTML priming
                 self.session.headers.update({"User-Agent": new_ua, **HTML_HEADERS, "Referer": self.base_url + "/"})
                 try:
                     self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
                     self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
                 except Exception as e:
-                    log.warning(f"Failed HTML priming after UA rotation: {e}")
-
+                    log.warning(f"HTML priming failed after UA rotation: {e}")
                 # API priming
                 api_headers = {**headers, "User-Agent": new_ua}
                 self.session.headers.update(api_headers)
                 try:
                     self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
                 except Exception as e:
-                    log.warning(f"Failed API priming after UA rotation: {e}")
-
+                    log.warning(f"API priming failed after UA rotation: {e}")
                 # Refresh cookies
                 self._get_cookies()
                 self.last_user_agent = new_ua
             else:
-                log.info(f"Reusing existing User-Agent: {new_ua}")
-
+                log.info(f"Reusing existing UA: {new_ua}")
         return dict(self.session.headers)
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
