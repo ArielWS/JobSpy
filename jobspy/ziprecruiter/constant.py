@@ -1,41 +1,50 @@
 # constant.py
 
+# API-specific headers (pulled from the mobile app)
+headers = {
+    "Host": "api.ziprecruiter.com",
+    "accept": "*/*",
+    "x-zr-zva-override": "100000000;vid:ZT1huzm_EQlDTVEc",
+    "x-pushnotificationid": "0ff4983d38d7fc5b3370297f2bcffcf4b3321c418f5c22dd152a0264707602a0",
+    "x-deviceid": "D77B3A92-E589-46A4-8A39-6EF6F1D86006",
+    "user-agent": "Job Search/87.0 (iPhone; CPU iOS 16_6_1 like Mac OS X)",
+    "authorization": "Basic YTBlZjMyZDYtN2I0Yy00MWVkLWEyODMtYTI1NDAzMzI0YTcyOg==",
+    "accept-language": "en-US,en;q=0.9",
+}
+
+# Static cookie-seed payload
+get_cookie_data = [
+    ("event_type", "session"),
+    ("logged_in", "false"),
+    ("number_of_retry", "1"),
+    ("property", "model:iPhone"),
+    ("property", "os:iOS"),
+    ("property", "locale:en_us"),           
+    ("property", "app_build_number:4734"),
+    ("property", "app_version:91.0"),
+    ("property", "manufacturer:Apple"),
+    ("property", "timestamp:2025-01-12T12:04:42-06:00"),
+    ("property", "screen_height:852"),
+    ("property", "os_version:16.6.1"),
+    ("property", "source:install"),
+    ("property", "screen_width:393"),
+    ("property", "device_model:iPhone 14 Pro"),
+    ("property", "brand:Apple"),
+]
+
+
 from datetime import datetime
 
-# 1.1 Base API headers (no User-Agent here—will inject later)
-API_HEADERS = {
-    "Host":           "api.ziprecruiter.com",
-    "Accept":         "*/*",
-    "Authorization":  "Basic YTBlZjMyZDYt…",       # your existing token
-    "Accept-Language":"en-US,en;q=0.9",
-    # (leave out User-Agent; we’ll add it dynamically)
-}
-
-# 1.2 Base cookie payload, minus timestamp & UA
-BASE_COOKIE_PAYLOAD = [
-    ("event_type",    "session"),
-    ("logged_in",     "false"),
-    ("number_of_retry","1"),
-    # … all your other ("property", "...") lines up to brand
-]
-
-# 1.3 Function to build a fresh payload each time
-def build_cookie_payload(ua: str) -> list[tuple[str,str]]:
+def build_cookie_payload_with_live_ts_and_ua(current_ua: str):
+    """
+    Clone the static get_cookie_data but update:
+      • the timestamp → now in UTC
+      • the UA property to match the session UA
+    """
+    payload = list(get_cookie_data)  # copy your original list
+    # Replace the hard-coded timestamp (last get_cookie_data entry named “timestamp”)—
+    # actually easier to append a fresh one at the end:
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S-00:00")
-    return [
-        *BASE_COOKIE_PAYLOAD,
-        ("property", f"timestamp:{now}"),
-        ("property", f"user_agent:{ua}")
-    ]
-
-# 1.4 Real-browser User-Agents pool
-USER_AGENTS = [
-  # your existing five UA strings…
-]
-
-# 1.5 Optional: browser-style headers for HTML pages
-HTML_HEADERS = {
-  "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  # Referer will be injected in init before each HTML request
-}
+    payload.append(("property", f"timestamp:{now}"))
+    payload.append(("property", f"user_agent:{current_ua}"))
+    return payload
