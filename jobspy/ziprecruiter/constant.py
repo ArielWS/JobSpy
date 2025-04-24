@@ -1,63 +1,41 @@
 # constant.py
 
-# API-specific headers (leave these as-is)
-headers = {
-    "Host": "api.ziprecruiter.com",
-    "accept": "*/*",
-    "x-zr-zva-override": "100000000;vid:ZT1huzm_EQlDTVEc",
-    "x-pushnotificationid": "0ff4983d38d7fc5b3370297f2bcffcf4b3321c418f5c22dd152a0264707602a0",
-    "x-deviceid": "D77B3A92-E589-46A4-8A39-6EF6F1D86006",
-    "authorization": "Basic YTBlZjMyZDYtN2I0Yy00MWVkLWEyODMtYTI1NDAzMzI0YTcyOg==",
-    "accept-language": "en-US,en;q=0.9",
+from datetime import datetime
+
+# 1.1 Base API headers (no User-Agent here—will inject later)
+API_HEADERS = {
+    "Host":           "api.ziprecruiter.com",
+    "Accept":         "*/*",
+    "Authorization":  "Basic YTBlZjMyZDYt…",       # your existing token
+    "Accept-Language":"en-US,en;q=0.9",
+    # (leave out User-Agent; we’ll add it dynamically)
 }
 
-# Real browser User-Agents for rotation
-# (pick from this list at init and on each rotation)
-user_agents = [
-    # Chrome on Windows 10
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/114.0.0.0 Safari/537.36",
-
-    # Chrome on macOS
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/114.0.0.0 Safari/537.36",
-
-    # Firefox on Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) "
-    "Gecko/20100101 Firefox/116.0",
-
-    # Safari on macOS
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/16.5 Safari/605.1.15",
-
-    # Edge on Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/114.0.1823.51 Safari/537.36 Edg/114.0.1823.51",
+# 1.2 Base cookie payload, minus timestamp & UA
+BASE_COOKIE_PAYLOAD = [
+    ("event_type",    "session"),
+    ("logged_in",     "false"),
+    ("number_of_retry","1"),
+    # … all your other ("property", "...") lines up to brand
 ]
 
-# Data payload for the /event call remains the same,
-# but you may want to dynamically inject the UA into it
-get_cookie_data = [
-    ("event_type", "session"),
-    ("logged_in", "false"),
-    ("number_of_retry", "1"),
-    # you can add a UA property if ZipRecruiter expects it:
-    # ("property", f"user_agent:{current_ua}"),
-    ("property", "model:iPhone"),
-    ("property", "os:iOS"),
-    ("property", "locale:en_us"),
-    ("property", "app_build_number:4734"),
-    ("property", "app_version:91.0"),
-    ("property", "manufacturer:Apple"),
-    ("property", "timestamp:2025-01-12T12:04:42-06:00"),
-    ("property", "screen_height:852"),
-    ("property", "os_version:16.6.1"),
-    ("property", "source:install"),
-    ("property", "screen_width:393"),
-    ("property", "device_model:iPhone 14 Pro"),
-    ("property", "brand:Apple"),
+# 1.3 Function to build a fresh payload each time
+def build_cookie_payload(ua: str) -> list[tuple[str,str]]:
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S-00:00")
+    return [
+        *BASE_COOKIE_PAYLOAD,
+        ("property", f"timestamp:{now}"),
+        ("property", f"user_agent:{ua}")
+    ]
+
+# 1.4 Real-browser User-Agents pool
+USER_AGENTS = [
+  # your existing five UA strings…
 ]
+
+# 1.5 Optional: browser-style headers for HTML pages
+HTML_HEADERS = {
+  "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  # Referer will be injected in init before each HTML request
+}
