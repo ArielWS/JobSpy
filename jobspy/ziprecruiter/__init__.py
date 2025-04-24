@@ -75,27 +75,19 @@ class ZipRecruiter(Scraper):
         else:
             self.proxies = []
 
-        # 2) Pick initial User-Agent
+        # 2) Pick initial User-Agent for priming
         initial_ua = random.choice(user_agents)
+        self.session.headers.update({"User-Agent": initial_ua})
 
         # 3) Prime Cloudflare JS challenge on HTML and API domains
         try:
-            # Set UA for priming
-            self.session.headers.update({"User-Agent": initial_ua})
-
-            # HTML domain priming
+            # HTML domain
             self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-            self.session.headers.update(HTML_HEADERS)
-            self.session.headers["Referer"] = f"{self.base_url}/"
             self.session.get(
-                self.base_url + "/Search-Jobs-Near-Me",
-                allow_redirects=True,
-                timeout=10,
+                self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10
             )
-
-            # API subdomain priming
+            # API subdomain
             self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
-
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
 
@@ -104,7 +96,7 @@ class ZipRecruiter(Scraper):
         self.session.headers.update(api_headers)
         self.last_user_agent = initial_ua
 
-        # 5) Seed cookies via the event call (fresh TS & UA)
+        # 5) Seed cookies via the event call (fresh timestamp & UA)
         self._get_cookies()
 
         # 6) Initialize internal state
@@ -114,6 +106,8 @@ class ZipRecruiter(Scraper):
         self.proxy_index = 0
         self.request_count = 0
         self.user_agent_switch_interval = 5
+
+
 
     def get_rotated_headers(self) -> dict[str, str]:
         """
