@@ -35,41 +35,38 @@ import cfscrape
 log = create_logger("ZipRecruiter")
 
 
+from jobspy.ziprecruiter.constant import headers, user_agents, get_cookie_data
+import cfscrape
+
 class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
     api_url  = "https://api.ziprecruiter.com"
 
-    def __init__(self,
-                 proxies: list[str] | str | None = None,
-                 ca_cert: str | None            = None):
-        """
-        Initializes ZipRecruiterScraper with the ZipRecruiter job search url
-        """
-        # 1) keep the base Scraper init (site, proxy list, etc)
+    def __init__(self, proxies=None, ca_cert=None):
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
-        self.scraper_input = None
-
-        # 2) create the underlying Session with your proxy + CA logic
+        # 1) Build your raw session (with proxies if any)
         raw_session = create_session(proxies=proxies, ca_cert=ca_cert)
 
-        # 3) wrap it in cfscrape so Cloudflare’s JS challenge is auto-solved
+        # 2) Wrap it in cfscrape
         self.session = cfscrape.create_scraper(sess=raw_session)
 
-        # 4.1) prime Cloudflare: hit two real HTML pages so cfscrape can solve the JS-challenge
+        # 3) Pick one of your real-browser UAs up front
+        ua = random.choice(user_agents)
+        self.session.headers.update({"User-Agent": ua})
+
+        # 4) Prime _both_ domains through that same proxy+UA
+        #    so Cloudflare solves the JS-challenge on your proxy IP:
         try:
-            #  – main homepage
             self.session.get(self.base_url, timeout=10)
-            #  – the HTML search page (not JSON)
-            self.session.get(f"{self.base_url}/jobs", timeout=10)
+            self.session.get(self.api_url,   timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
 
-
-        # 4.2) now apply your API headers (Host: api.ziprecruiter.com, auth, etc.)
+        # 5) Now layer on your API headers (auth, x-zr-*, etc.)
         self.session.headers.update(headers)
 
-        # 5) seed the cookies, etc.
+        # 6) Seed cookies via the event call
         self._get_cookies()
 
         # --- rest of your initialization ---
