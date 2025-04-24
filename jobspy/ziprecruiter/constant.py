@@ -1,4 +1,6 @@
-# Updated headers with multiple user-agent options for rotation
+# constant.py
+
+# API-specific headers (leave these as-is)
 headers = {
     "Host": "api.ziprecruiter.com",
     "accept": "*/*",
@@ -9,20 +11,42 @@ headers = {
     "accept-language": "en-US,en;q=0.9",
 }
 
-# List of user agents for rotation
+# Real browser User-Agents for rotation
+# (pick from this list at init and on each rotation)
 user_agents = [
-    "Job Search/87.0 (iPhone; CPU iOS 16_6_1 like Mac OS X)",
-    "Job Search/91.0 (iPhone; CPU iOS 16_7 like Mac OS X)",
-    "Job Search/85.0 (iPhone; CPU iOS 15_5 like Mac OS X)",
-    "Job Search/88.0 (iPhone; CPU iOS 16_6_1 like Mac OS X)",
-    "Job Search/90.0 (iPhone; CPU iOS 15_3 like Mac OS X)",
+    # Chrome on Windows 10
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/114.0.0.0 Safari/537.36",
+
+    # Chrome on macOS
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/114.0.0.0 Safari/537.36",
+
+    # Firefox on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) "
+    "Gecko/20100101 Firefox/116.0",
+
+    # Safari on macOS
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+    "Version/16.5 Safari/605.1.15",
+
+    # Edge on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/114.0.1823.51 Safari/537.36 Edg/114.0.1823.51",
 ]
 
-# Get cookie data remains unchanged, but we might want to ensure it gets updated when the user-agent changes
+# Data payload for the /event call remains the same,
+# but you may want to dynamically inject the UA into it
 get_cookie_data = [
     ("event_type", "session"),
     ("logged_in", "false"),
     ("number_of_retry", "1"),
+    # you can add a UA property if ZipRecruiter expects it:
+    # ("property", f"user_agent:{current_ua}"),
     ("property", "model:iPhone"),
     ("property", "os:iOS"),
     ("property", "locale:en_us"),
@@ -37,4 +61,3 @@ get_cookie_data = [
     ("property", "device_model:iPhone 14 Pro"),
     ("property", "brand:Apple"),
 ]
-
