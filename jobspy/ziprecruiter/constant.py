@@ -32,6 +32,33 @@ get_cookie_data = [
     ("property", "brand:Apple"),
 ]
 
+# ————————————————————————————
+# Real-browser User-Agents for rotation
+user_agents = [
+    # Chrome on Windows 10
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/114.0.0.0 Safari/537.36",
+
+    # Chrome on macOS
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/114.0.0.0 Safari/537.36",
+
+    # Firefox on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) "
+    "Gecko/20100101 Firefox/116.0",
+
+    # Safari on macOS
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+    "Version/16.5 Safari/605.1.15",
+
+    # Edge on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/114.0.1823.51 Safari/537.36 Edg/114.0.1823.51",
+]
 
 from datetime import datetime
 
