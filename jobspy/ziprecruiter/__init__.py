@@ -66,19 +66,13 @@ class ZipRecruiter(Scraper):
                     p if p.startswith(("http://", "https://")) else "http://" + p
                     for p in proxies
                 ]
-            else:
-                self.proxies = [
-                    proxies if proxies.startswith(("http://", "https://")) else "http://" + proxies
-                ]
-            first = self.proxies[0]
-            self.session.proxies.update({"http": first, "https": first})
-        else:
+                    else:
             self.proxies = []
 
-                # 2) Pick initial User-Agent and set browser headers for priming
+        # 2) Pick initial User-Agent for priming
         initial_ua = random.choice(user_agents)
-        # Use browser-like headers for HTML priming
-        self.session.headers.update({"User-Agent": initial_ua, **HTML_HEADERS, "Referer": self.base_url + "/"})
+        # Set UA only, no HTML headers here to solve Cloudflare JS challenge
+        self.session.headers.update({"User-Agent": initial_ua})
 
         # 3) Prime Cloudflare JS challenge on HTML domains
         try:
@@ -91,18 +85,19 @@ class ZipRecruiter(Scraper):
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance on HTML: {e}")
 
-        # Clear HTML headers before API priming
+        # Clear any custom headers before API priming
         self.session.headers.clear()
 
-        # Prime API subdomain (using default UA header)
+        # Prime API subdomain with UA only
         try:
             self.session.headers.update({"User-Agent": initial_ua})
             self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance on API: {e}")
 
-        # 4) Apply mobile-API headers with dynamic UA with dynamic UA
+        # 4) Apply mobile-API headers with dynamic UA
         api_headers = {**headers, "User-Agent": initial_ua}
+        self.session.headers.clear()
         self.session.headers.update(api_headers)
         self.last_user_agent = initial_ua
 
