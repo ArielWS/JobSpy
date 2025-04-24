@@ -78,10 +78,14 @@ class ZipRecruiter(Scraper):
         self.session.headers.update({"User-Agent": initial_ua})
         self.last_user_agent = initial_ua
 
-        # 4) Prime Cloudflare for both domains under this proxy+UA
+        # 4) Prime Cloudflare on main‐root, HTML search page, AND API‐root
         try:
-            self.session.get(self.base_url, timeout=3)
-            self.session.get(f"{self.base_url}/jobs", timeout=10)
+            # 4a) main site root
+            self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
+            # 4b) the HTML search page (must include trailing slash)
+            self.session.get(self.base_url + "/jobs/", allow_redirects=True, timeout=10)
+            # 4c) API subdomain root
+            self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
         except Exception as e:
             log.warning(f"Could not prime Cloudflare clearance: {e}")
 
@@ -122,14 +126,20 @@ class ZipRecruiter(Scraper):
             new_ua = random.choice(user_agents)
             if new_ua != self.last_user_agent:
                 log.info("Switching to a new User-Agent. Clearing cookies & re-priming Cloudflare.")
+                # clear existing cookies
                 self.session.cookies.clear()
+                # update header
                 self.session.headers.update({"User-Agent": new_ua})
                 self.last_user_agent = new_ua
 
-                # Re-prime Cloudflare under new UA+proxy
+                # Re-prime Cloudflare on all three challenge endpoints
                 try:
-                    self.session.get(self.base_url, timeout=5)
-                    self.session.get(f"{self.base_url}/jobs", timeout=5)
+                    # 1) main site root
+                    self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
+                    # 2) HTML search page with trailing slash
+                    self.session.get(self.base_url + "/jobs/", allow_redirects=True, timeout=10)
+                    # 3) API subdomain root
+                    self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
                 except Exception as e:
                     log.warning(f"Failed to re-prime Cloudflare after UA rotation: {e}")
             else:
