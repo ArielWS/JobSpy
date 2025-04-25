@@ -9,7 +9,7 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 
-from jobspy.ziprecruiter.constant import headers, get_cookie_data
+from jobspy.ziprecruiter.constant import make_headers, get_cookie_data
 from jobspy.util import (
     extract_emails_from_text,
     create_session,
@@ -47,7 +47,8 @@ class ZipRecruiter(Scraper):
 
         self.scraper_input = None
         self.session = create_session(proxies=proxies, ca_cert=ca_cert)
-        self.session.headers.update(headers)
+        # Apply a fresh dynamic fingerprint for each instance
+        self.session.headers.update(make_headers())
         self._get_cookies()
 
         self.delay = 5
