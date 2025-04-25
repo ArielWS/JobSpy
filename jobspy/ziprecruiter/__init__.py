@@ -82,6 +82,7 @@ class ZipRecruiter(Scraper):
                 break
         return JobResponse(jobs=job_list[: scraper_input.results_wanted])
 
+
     def _find_jobs_in_page(
         self, scraper_input: ScraperInput, continue_token: str | None = None
     ) -> tuple[list[JobPost], str | None]:
@@ -91,35 +92,54 @@ class ZipRecruiter(Scraper):
         :param continue_token:
         :return: jobs found on page
         """
-        jobs_list = []
+        jobs_list: list[JobPost] = []
         params = add_params(scraper_input)
         if continue_token:
             params["continue_from"] = continue_token
-        try:
-            res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
-            if res.status_code not in range(200, 400):
-                if res.status_code == 429:
-                    err = "429 Response - Blocked by ZipRecruiter for too many requests"
+
+        # ——— backoff retry loop for 429 handling ———
+        max_tries = 3
+        res = None
+        for attempt in range(1, max_tries + 1):
+            try:
+                res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
+            except Exception as e:
+                if "Proxy responded with" in str(e):
+                    log.error("Indeed: Bad proxy")
                 else:
-                    err = f"ZipRecruiter response status code {res.status_code}"
-                    err += f" with response: {res.text}"  # ZipRecruiter likely not available in EU
+                    log.error(f"Indeed: {str(e)}")
+                return jobs_list, ""
+
+            if res.status_code == 429:
+                wait = int(res.headers.get("Retry-After", 2 ** attempt))
+                log.warning(f"429 received; sleeping {wait}s before retry #{attempt}")
+                time.sleep(wait)
+                continue
+
+            if not (200 <= res.status_code < 400):
+                err = (
+                    "429 Response - Blocked by ZipRecruiter for too many requests"
+                    if res.status_code == 429
+                    else f"ZipRecruiter response status code {res.status_code} with response: {res.text}"
+                )
                 log.error(err)
                 return jobs_list, ""
-        except Exception as e:
-            if "Proxy responded with" in str(e):
-                log.error(f"Indeed: Bad proxy")
-            else:
-                log.error(f"Indeed: {str(e)}")
-            return jobs_list, ""
 
+            break
+        # —————————————————————————————————————————————————
+
+        # Parse JSON response
         res_data = res.json()
-        jobs_list = res_data.get("jobs", [])
+        jobs_raw = res_data.get("jobs", [])
         next_continue_token = res_data.get("continue", None)
+
+        # Process jobs concurrently
         with ThreadPoolExecutor(max_workers=self.jobs_per_page) as executor:
-            job_results = [executor.submit(self._process_job, job) for job in jobs_list]
+            job_results = [executor.submit(self._process_job, job) for job in jobs_raw]
 
         job_list = list(filter(None, (result.result() for result in job_results)))
         return job_list, next_continue_token
+
 
     def _process_job(self, job: dict) -> JobPost | None:
         """
