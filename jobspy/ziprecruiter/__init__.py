@@ -1,19 +1,15 @@
 from __future__ import annotations
+
 import json
 import math
 import re
 import time
-import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from bs4 import BeautifulSoup
 
-from jobspy.ziprecruiter.constant import (
-    headers,
-    build_cookie_payload_with_live_ts_and_ua,
-    user_agents,
-)
+from jobspy.ziprecruiter.constant import headers, get_cookie_data
 from jobspy.util import (
     extract_emails_from_text,
     create_session,
@@ -34,145 +30,46 @@ from jobspy.model import (
 )
 from jobspy.ziprecruiter.util import get_job_type_enum, add_params
 
-import cfscrape
-
 log = create_logger("ZipRecruiter")
 
-# Browser-like headers for HTML page fetches (including Client Hint headers)
-HTML_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "Cache-Control": "max-age=0",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-User": "?1",
-    "Sec-CH-UA": '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-    "Sec-CH-UA-Mobile": "?0",
-    "Sec-CH-UA-Platform": "macOS",
-    "Sec-CH-UA-Full-Version": "135.0.7049.96",
-    "Sec-CH-UA-Arch": "x86",
-    "Sec-CH-UA-Bitness": "64",
-    "Sec-CH-UA-Model": "",
-    "Sec-CH-UA-Platform-Version": "11.7.10",
-}
 
 class ZipRecruiter(Scraper):
     base_url = "https://www.ziprecruiter.com"
-    api_url  = "https://api.ziprecruiter.com"
+    api_url = "https://api.ziprecruiter.com"
 
     def __init__(
-        self,
-        proxies: list[str] | str | None = None,
-        ca_cert: str | None            = None,
+        self, proxies: list[str] | str | None = None, ca_cert: str | None = None
     ):
+        """
+        Initializes ZipRecruiterScraper with the ZipRecruiter job search url
+        """
         super().__init__(Site.ZIP_RECRUITER, proxies=proxies)
 
-        # 1) Build raw session with proxy/CA logic
-        raw_session = create_session(proxies=proxies, ca_cert=ca_cert)
-        self.session = cfscrape.create_scraper(sess=raw_session)
-
-        # 1.1) Normalize & apply the first proxy if provided
-        if proxies:
-            if isinstance(proxies, list):
-                self.proxies = [
-                    p if p.startswith(("http://", "https://")) else "http://" + p
-                    for p in proxies
-                ]
-            else:
-                self.proxies = [
-                    proxies if proxies.startswith(("http://", "https://")) else "http://" + proxies
-                ]
-            first = self.proxies[0]
-            self.session.proxies.update({"http": first, "https": first})
-        else:
-            self.proxies = []
-
-        # 2) Choose initial User-Agent
-        initial_ua = random.choice(user_agents)
-
-        # 3) Prime Cloudflare JS challenge on HTML domains (browser-style)
-        self.session.headers.update({"User-Agent": initial_ua, **HTML_HEADERS, "Referer": self.base_url + "/"})
-        try:
-            self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-            self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
-        except Exception as e:
-            log.warning(f"Could not prime Cloudflare on HTML: {e}")
-
-        # 4) Prime API subdomain (mobile-API headers)
-        api_headers = {**headers, "User-Agent": initial_ua}
-        self.session.headers.update(api_headers)
-        try:
-            self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
-        except Exception as e:
-            log.warning(f"Could not prime Cloudflare on API: {e}")
-
-        # 5) Seed cookies via the event call
-        self.last_user_agent = initial_ua
+        self.scraper_input = None
+        self.session = create_session(proxies=proxies, ca_cert=ca_cert)
+        self.session.headers.update(headers)
         self._get_cookies()
 
-        # 6) Initialize internal state
-        self.delay = 1
+        self.delay = 5
         self.jobs_per_page = 20
         self.seen_urls = set()
-        self.proxy_index = 0
-        self.request_count = 0
-        self.user_agent_switch_interval = 5
-
-    def get_rotated_headers(self) -> dict[str, str]:
-        """
-        Rotate proxies and user-agents; re-prime HTML & API endpoints when UA changes.
-        """
-        # Proxy rotation
-        if not self.proxies:
-            log.error("No proxies available for rotation!")
-            return {}
-        proxy = self.proxies[self.proxy_index % len(self.proxies)]
-        self.proxy_index += 1
-        if proxy and not proxy.startswith(("http://", "https://")):
-            proxy = "http://" + proxy
-        self.session.proxies.update({"http": proxy, "https": proxy})
-
-        # UA rotation
-        self.request_count += 1
-        if self.request_count % self.user_agent_switch_interval == 0:
-            new_ua = random.choice(user_agents)
-            if new_ua != self.last_user_agent:
-                log.info("Switching UA, clearing cookies & re-priming.")
-                self.session.cookies.clear()
-                # HTML priming
-                self.session.headers.update({"User-Agent": new_ua, **HTML_HEADERS, "Referer": self.base_url + "/"})
-                try:
-                    self.session.get(self.base_url + "/", allow_redirects=True, timeout=10)
-                    self.session.get(self.base_url + "/Search-Jobs-Near-Me", allow_redirects=True, timeout=10)
-                except Exception as e:
-                    log.warning(f"HTML priming failed after UA rotation: {e}")
-                # API priming
-                api_headers = {**headers, "User-Agent": new_ua}
-                self.session.headers.update(api_headers)
-                try:
-                    self.session.get(self.api_url + "/", allow_redirects=True, timeout=10)
-                except Exception as e:
-                    log.warning(f"API priming failed after UA rotation: {e}")
-                # Refresh cookies
-                self._get_cookies()
-                self.last_user_agent = new_ua
-            else:
-                log.info(f"Reusing existing UA: {new_ua}")
-        return dict(self.session.headers)
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
+        """
+        Scrapes ZipRecruiter for jobs with scraper_input criteria.
+        :param scraper_input: Information about job search criteria.
+        :return: JobResponse containing a list of jobs.
+        """
         self.scraper_input = scraper_input
         job_list: list[JobPost] = []
         continue_token = None
+
         max_pages = math.ceil(scraper_input.results_wanted / self.jobs_per_page)
         for page in range(1, max_pages + 1):
             if len(job_list) >= scraper_input.results_wanted:
                 break
             if page > 1:
-                time.sleep(random.uniform(0.5, 2))
+                time.sleep(self.delay)
             log.info(f"search page: {page} / {max_pages}")
             jobs_on_page, continue_token = self._find_jobs_in_page(
                 scraper_input, continue_token
@@ -188,46 +85,46 @@ class ZipRecruiter(Scraper):
     def _find_jobs_in_page(
         self, scraper_input: ScraperInput, continue_token: str | None = None
     ) -> tuple[list[JobPost], str | None]:
-        jobs_list: list[JobPost] = []
+        """
+        Scrapes a page of ZipRecruiter for jobs with scraper_input criteria
+        :param scraper_input:
+        :param continue_token:
+        :return: jobs found on page
+        """
+        jobs_list = []
         params = add_params(scraper_input)
         if continue_token:
             params["continue_from"] = continue_token
-
-        self.get_rotated_headers()
-
         try:
-            res = self.session.get(
-                f"{self.api_url}/jobs-app/jobs",
-                params=params,
-                timeout=1,
-            )
-            time.sleep(random.uniform(0.5, 1.5))
+            res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
             if res.status_code not in range(200, 400):
                 if res.status_code == 429:
-                    log.error("429 Response - rate-limited by ZipRecruiter")
-                    time.sleep(random.uniform(2, 3))
+                    err = "429 Response - Blocked by ZipRecruiter for too many requests"
                 else:
-                    log.error(
-                        f"ZipRecruiter response status code {res.status_code} "
-                        f"with response: {res.text}"
-                    )
-                return [], None
+                    err = f"ZipRecruiter response status code {res.status_code}"
+                    err += f" with response: {res.text}"  # ZipRecruiter likely not available in EU
+                log.error(err)
+                return jobs_list, ""
         except Exception as e:
-            log.error(f"Error fetching jobs page: {e}")
-            return [], None
+            if "Proxy responded with" in str(e):
+                log.error(f"Indeed: Bad proxy")
+            else:
+                log.error(f"Indeed: {str(e)}")
+            return jobs_list, ""
 
-        data = res.json()
-        raw_jobs = data.get("jobs", [])
-        next_token = data.get("continue")
-
+        res_data = res.json()
+        jobs_list = res_data.get("jobs", [])
+        next_continue_token = res_data.get("continue", None)
         with ThreadPoolExecutor(max_workers=self.jobs_per_page) as executor:
-            futures = [executor.submit(self._process_job, j) for j in raw_jobs]
-        jobs_list = [job for job in (f.result() for f in futures) if job]
+            job_results = [executor.submit(self._process_job, job) for job in jobs_list]
 
-        return jobs_list, next_token
+        job_list = list(filter(None, (result.result() for result in job_results)))
+        return job_list, next_continue_token
 
     def _process_job(self, job: dict) -> JobPost | None:
-        time.sleep(random.uniform(0.5, 1.5))
+        """
+        Processes an individual job dict from the response
+        """
         title = job.get("name")
         job_url = f"{self.base_url}/jobs//j?lvk={job['listing_key']}"
         if job_url in self.seen_urls:
@@ -280,11 +177,7 @@ class ZipRecruiter(Scraper):
         )
 
     def _get_descr(self, job_url):
-        old_headers = dict(self.session.headers)
-        self.session.headers.update(HTML_HEADERS)
-        self.session.headers["Referer"] = f"{self.base_url}/Search-Jobs-Near-Me"
-
-        res = self.session.get(job_url, allow_redirects=True, timeout=10)
+        res = self.session.get(job_url, allow_redirects=True)
         description_full = job_url_direct = None
         if res.ok:
             soup = BeautifulSoup(res.text, "html.parser")
@@ -292,13 +185,16 @@ class ZipRecruiter(Scraper):
             company_descr_section = soup.find("section", class_="company_description")
             job_description_clean = (
                 remove_attributes(job_descr_div).prettify(formatter="html")
-                if job_descr_div else ""
+                if job_descr_div
+                else ""
             )
             company_description_clean = (
                 remove_attributes(company_descr_section).prettify(formatter="html")
-                if company_descr_section else ""
+                if company_descr_section
+                else ""
             )
             description_full = job_description_clean + company_description_clean
+
             try:
                 script_tag = soup.find("script", type="application/json")
                 if script_tag:
@@ -309,15 +205,15 @@ class ZipRecruiter(Scraper):
                         job_url_direct = m.group(1)
             except:
                 job_url_direct = None
+
             if self.scraper_input.description_format == DescriptionFormat.MARKDOWN:
                 description_full = markdown_converter(description_full)
-        self.session.headers.clear()
-        self.session.headers.update(old_headers)
+
         return description_full, job_url_direct
 
     def _get_cookies(self):
+        """
+        Sends a session event to the API with device properties.
+        """
         url = f"{self.api_url}/jobs-app/event"
-        ua = self.session.headers["User-Agent"]
-        payload = build_cookie_payload_with_live_ts_and_ua(ua)
-        res = self.session.post(url, data=payload, timeout=10)
-        res.raise_for_status()
+        self.session.post(url, data=get_cookie_data)
