@@ -152,7 +152,6 @@ class Glassdoor(Scraper):
             response = self.session.post(
                 f"{self.base_url}/graph",
                 headers=self.get_rotated_headers(),
-                timeout=15,
                 json=json.loads(payload),
             )
             if response.status_code != 200:
@@ -194,7 +193,6 @@ class Glassdoor(Scraper):
         res = self.session.get(
             f"{self.base_url}/Job/computer-science-jobs.htm",
             headers=self.get_rotated_headers(),
-            timeout=10,
         )
         pattern = r'"token":\s*"([^"]+)"'
         matches = re.findall(pattern, res.text)
@@ -289,7 +287,6 @@ class Glassdoor(Scraper):
             url,
             json=body,
             headers=self.get_rotated_headers(),
-            timeout=10,
         )
         if res.status_code != 200:
             return None
@@ -307,7 +304,6 @@ class Glassdoor(Scraper):
         res = self.session.get(
             url,
             headers=self.get_rotated_headers(),
-            timeout=10,
         )
         if res.status_code != 200:
             if res.status_code == 429:
