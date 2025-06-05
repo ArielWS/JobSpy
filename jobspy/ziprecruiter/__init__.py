@@ -103,6 +103,11 @@ class ZipRecruiter(Scraper):
         res = None
         for attempt in range(1, max_tries + 1):
             try:
+            # ─── DEBUG: print the exact URL + params being requested ───
+            from urllib.parse import urlencode
+            full_url = f"{self.api_url}/jobs-app/jobs?{urlencode(params)}"
+            print(f"[ZipRecruiter DEBUG] GET {full_url}")
+            try:
                 res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
             except Exception as e:
                 if "Proxy responded with" in str(e):
