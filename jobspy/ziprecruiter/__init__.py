@@ -92,7 +92,7 @@ class ZipRecruiter(Scraper):
         Scrapes a page of ZipRecruiter for jobs with scraper_input criteria
         :param scraper_input:
         :param continue_token:
-        :return: jobs found on page
+        :return: jobs found on page (list of JobPost) and next_continue_token
         """
         jobs_list: list[JobPost] = []
         params = add_params(scraper_input)
@@ -107,6 +107,7 @@ class ZipRecruiter(Scraper):
             from urllib.parse import urlencode
             full_url = f"{self.api_url}/jobs-app/jobs?{urlencode(params)}"
             print(f"[ZipRecruiter DEBUG] GET {full_url}")
+
             try:
                 res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
             except Exception as e:
@@ -116,12 +117,14 @@ class ZipRecruiter(Scraper):
                     log.error(f"ZipRecruiter: {str(e)}")
                 return jobs_list, ""
 
+            # Handle 429s with exponential‐like backoff
             if res.status_code == 429:
                 wait = int(res.headers.get("Retry-After", 2 ** attempt))
                 log.warning(f"429 received; sleeping {wait}s before retry #{attempt}")
                 time.sleep(wait)
                 continue
 
+            # Any non-2XX/3XX other than 429 is a hard failure
             if not (200 <= res.status_code < 400):
                 err = (
                     "429 Response - Blocked by ZipRecruiter for too many requests"
@@ -134,10 +137,22 @@ class ZipRecruiter(Scraper):
             break
         # —————————————————————————————————————————————————
 
-        # Parse JSON response
-        res_data = res.json()
+        # At this point, res is a 200‐range response. Parse JSON:
+        try:
+            res_data = res.json()
+        except ValueError:
+            # If JSON parsing fails, print the raw text
+            print(f"[ZipRecruiter DEBUG] Non‐JSON response:\n{res.text}")
+            return jobs_list, None
+
         jobs_raw = res_data.get("jobs", [])
         next_continue_token = res_data.get("continue", None)
+
+        # ─── DEBUG: If jobs_raw is empty, print the entire JSON for clues ───
+        if not jobs_raw:
+            print("[ZipRecruiter DEBUG] Received zero jobs. Full response JSON:")
+            print(json.dumps(res_data, indent=2))
+        # ─────────────────────────────────────────────────────────────────────
 
         # Process jobs concurrently
         with ThreadPoolExecutor(max_workers=self.jobs_per_page) as executor:
