@@ -84,6 +84,7 @@ class ZipRecruiter(Scraper):
         return JobResponse(jobs=job_list[: scraper_input.results_wanted])
 
 
+
     def _find_jobs_in_page(
         self, scraper_input: ScraperInput, continue_token: str | None = None
     ) -> tuple[list[JobPost], str | None]:
@@ -102,8 +103,7 @@ class ZipRecruiter(Scraper):
         max_tries = 3
         res = None
         for attempt in range(1, max_tries + 1):
-            try:
-            # ─── DEBUG: print the exact URL + params being requested ───
+            # ─── DEBUG: show exact URL + params ZipRecruiter is requesting ───
             from urllib.parse import urlencode
             full_url = f"{self.api_url}/jobs-app/jobs?{urlencode(params)}"
             print(f"[ZipRecruiter DEBUG] GET {full_url}")
@@ -111,9 +111,9 @@ class ZipRecruiter(Scraper):
                 res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
             except Exception as e:
                 if "Proxy responded with" in str(e):
-                    log.error("Indeed: Bad proxy")
+                    log.error("ZipRecruiter: Bad proxy")
                 else:
-                    log.error(f"Indeed: {str(e)}")
+                    log.error(f"ZipRecruiter: {str(e)}")
                 return jobs_list, ""
 
             if res.status_code == 429:
@@ -145,6 +145,7 @@ class ZipRecruiter(Scraper):
 
         job_list = list(filter(None, (result.result() for result in job_results)))
         return job_list, next_continue_token
+
 
 
     def _process_job(self, job: dict) -> JobPost | None:
