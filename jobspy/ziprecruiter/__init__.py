@@ -106,7 +106,7 @@ class ZipRecruiter(Scraper):
             # ─── DEBUG: show exact URL + params ZipRecruiter is requesting ───
             from urllib.parse import urlencode
             full_url = f"{self.api_url}/jobs-app/jobs?{urlencode(params)}"
-            print(f"[ZipRecruiter DEBUG] GET {full_url}")
+            # print(f"[ZipRecruiter DEBUG] GET {full_url}")
 
             try:
                 res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
@@ -142,7 +142,7 @@ class ZipRecruiter(Scraper):
             res_data = res.json()
         except ValueError:
             # If JSON parsing fails, print the raw text
-            print(f"[ZipRecruiter DEBUG] Non‐JSON response:\n{res.text}")
+            # print(f"[ZipRecruiter DEBUG] Non‐JSON response:\n{res.text}")
             return jobs_list, None
 
         jobs_raw = res_data.get("jobs", [])
@@ -150,8 +150,8 @@ class ZipRecruiter(Scraper):
 
         # ─── DEBUG: If jobs_raw is empty, print the entire JSON for clues ───
         if not jobs_raw:
-            print("[ZipRecruiter DEBUG] Received zero jobs. Full response JSON:")
-            print(json.dumps(res_data, indent=2))
+            # print("[ZipRecruiter DEBUG] Received zero jobs. Full response JSON:")
+            # print(json.dumps(res_data, indent=2))
         # ─────────────────────────────────────────────────────────────────────
 
         # Process jobs concurrently
