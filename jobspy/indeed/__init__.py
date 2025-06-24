@@ -90,17 +90,18 @@ class Indeed(Scraper):
         jobs = []
         new_cursor = None
         filters = self._build_filters()
-        search_term = (
-            self.scraper_input.search_term.replace('"', '\\"')
-            if self.scraper_input.search_term
-            else ""
-        )
+        raw_term = self.scraper_input.search_term or ""
+        # 1) squash new-lines / tabs → single space
+        clean_term = " ".join(raw_term.split())
+        # 2) escape double-quotes for GraphQL
+        clean_term = clean_term.replace('"', '\\"')
+        search_term = clean_term
         query = job_search_query.format(
             what=(f'what: "{search_term}"' if search_term else ""),
             location=(
-                f'location: {{where: "{self.scraper_input.location}", radius: {self.scraper_input.distance}, radiusUnit: MILES}}'
-                if self.scraper_input.location
-                else ""
+                f'location: {{where: "{self.scraper_input.location}"}}'
+                if self.scraper_input.location and self.scraper_input.location.lower() == self.scraper_input.country.name.lower()
+                else f'location: {{where: "{self.scraper_input.location}", radius: {self.scraper_input.distance}, radiusUnit: MILES}}'
             ),
             dateOnIndeed=self.scraper_input.hours_old,
             cursor=f'cursor: "{cursor}"' if cursor else "",
