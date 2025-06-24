@@ -123,6 +123,7 @@ class Indeed(Scraper):
             )
             return jobs, new_cursor
         data = response.json()
+        print(json.dumps(data, indent=2)[:2000])
         jobs = data["data"]["jobSearch"]["results"]
         new_cursor = data["data"]["jobSearch"]["pageInfo"]["nextCursor"]
 
