@@ -122,12 +122,12 @@ class Indeed(Scraper):
             verify=False,
         )
         # ─── DEBUG: print raw JSON returned by Indeed ────────────────────────────────
-        try:
-            print("RAW_JSON_BEGIN")
-            print(json.dumps(response.json(), indent=2)[:2000])   # first 2 000 chars
-            print("RAW_JSON_END")
-        except Exception as e:
-            print("JSON decode error:", e)
+        # try:
+        #     print("RAW_JSON_BEGIN")
+        #     print(json.dumps(response.json(), indent=2)[:2000])   # first 2 000 chars
+        #     print("RAW_JSON_END")
+        # except Exception as e:
+        #     print("JSON decode error:", e)
         # ─────────────────────────────────────────────────────────────────────────────
 
 
