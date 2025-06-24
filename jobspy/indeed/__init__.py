@@ -99,9 +99,10 @@ class Indeed(Scraper):
         query = job_search_query.format(
             what=(f'what: "{search_term}"' if search_term else ""),
             location=(
-                f'location: {{where: "{self.scraper_input.location}"}}'
-                if self.scraper_input.location and self.scraper_input.location.lower() == self.scraper_input.country.name.lower()
-                else f'location: {{where: "{self.scraper_input.location}", radius: {self.scraper_input.distance}, radiusUnit: MILES}}'
+                f'location: {{where: "{self.scraper_input.location}", '
+                f'radius: {self.scraper_input.distance}, radiusUnit: MILES}}'
+                if self.scraper_input.location
+                else ""
             ),
             dateOnIndeed=self.scraper_input.hours_old,
             cursor=f'cursor: "{cursor}"' if cursor else "",
