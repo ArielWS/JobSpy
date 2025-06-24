@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from datetime import datetime
 from typing import Tuple
@@ -111,12 +112,24 @@ class Indeed(Scraper):
         api_headers_temp = api_headers.copy()
         api_headers_temp["indeed-co"] = self.api_country_code
         response = self.session.post(
+
             self.api_url,
             headers=api_headers_temp,
             json=payload,
             timeout=10,
             verify=False,
         )
+        # ─── DEBUG: print raw JSON returned by Indeed ────────────────────────────────
+        try:
+            print("RAW_JSON_BEGIN")
+            print(json.dumps(response.json(), indent=2)[:2000])   # first 2 000 chars
+            print("RAW_JSON_END")
+        except Exception as e:
+            print("JSON decode error:", e)
+        # ─────────────────────────────────────────────────────────────────────────────
+
+
+
         if not response.ok:
             log.info(
                 f"responded with status code: {response.status_code} (submit GitHub issue if this appears to be a bug)"
